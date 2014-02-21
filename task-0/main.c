@@ -3,6 +3,7 @@
 #include <time.h>
 #include <stdlib.h>
 
+
 void fill(int* array, int size, int* sum)
 {
     int i;
