@@ -15,27 +15,25 @@ void fill(int* array, int size, int* sum)
     }
 }
 
-int getsum_step(int* array, int size, int step)
-{
-    int i, sum, position, j;
-    position = 0;
-    sum = 0;
-    j=0;
-    for (i=0; i < size; i++)
-    {
-        sum += array[position];
-        position += step;
-        if (position >= size)
-            position = ++j;
-    }
-    return sum;
-}
-
 void swap(int* a,int *b)
 {
     int c = *a;
     *a = *b;
     *b = c;
+}
+
+void generate_permutation_step(int* array, int size, int step)
+{
+    int i, position, j;
+    position = 0;
+    j=0;
+    for (i=0; i < size; i++)
+    {
+        array[i] = position;
+        position += step;
+        if (position >= size)
+            position = ++j;
+    }
 }
 
 void generate_permutation(int* array, int size)
@@ -52,7 +50,7 @@ void generate_permutation(int* array, int size)
     }
 }
 
-int getsum_random(int* array, int* permutation, int size)
+int getsum(int* array, int* permutation, int size)
 {
     int i, sum;
     sum = 0;
@@ -61,38 +59,17 @@ int getsum_random(int* array, int* permutation, int size)
     return sum;
 }
 
-
-void test_mode(int size)
-{
-    clock_t t;
-    int *array, sum,i;
-    freopen("result","w",stdout);
-    array = (int*) malloc(size * sizeof(int));
-    fill(array, size, &sum);
-    for (i = 0; i < 100; i++)
-    {
-        int step = 10 * i + 1;
-        t = clock();
-        if (getsum_step(array, size, step) == sum)
-            printf("%d %f\n", step, difftime(clock(), t) / CLOCKS_PER_SEC);
-        else printf("Error!");
-    }
-    free(array);
-}
-
 int main(int argc, char** argv)
 {
     int *array;
     clock_t t;
-    if (argc == 2) 
-        test_mode(atoi(argv[1]));
-    else if (argc < 3) 
+    int NumberOfElements, operation_type, sum, *permutation, step;
+    if (argc < 3) 
         printf("Not enougth arguments");
     else 
     {
-        int NumberOfElements = atoi(argv[1]);
-        int operation_type = atoi(argv[2]);
-        int sum;
+        NumberOfElements = atoi(argv[1]);
+        operation_type = atoi(argv[2]);
         array = (int*) malloc(NumberOfElements * sizeof(int));
         fill(array, NumberOfElements, &sum);
         if (operation_type == 0) /* step */
@@ -101,9 +78,11 @@ int main(int argc, char** argv)
                 printf("No step found or too many arguments");
             else 
             {
-                int step = atoi(argv[3]);
+                step = atoi(argv[3]);
+                permutation = (int*) malloc(NumberOfElements * sizeof(int));
+                generate_permutation_step(permutation, NumberOfElements, step);
                 t = clock();
-                if (getsum_step(array, NumberOfElements, step) == sum)
+                if (getsum(array, permutation, NumberOfElements) == sum)
                 {
                     printf("%f", difftime(clock(), t) / CLOCKS_PER_SEC);
                 }
@@ -113,11 +92,12 @@ int main(int argc, char** argv)
         {
             if (argc!=3) 
                 printf("Too many arguments");
-            else {
-                int* permutation = (int*) malloc(NumberOfElements * sizeof(int));
+            else 
+            {
+                permutation = (int*) malloc(NumberOfElements * sizeof(int));
                 generate_permutation(permutation, NumberOfElements);
                 t = clock();
-                if (getsum_random(array, permutation, NumberOfElements) == sum)
+                if (getsum(array, permutation, NumberOfElements) == sum)
                 {
                     printf("%f", difftime(clock(),t) / CLOCKS_PER_SEC);   
                 } 
