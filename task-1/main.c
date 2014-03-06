@@ -20,6 +20,8 @@ int safe_gets(FILE *f, char** string)
     char* result;
     char* success;
     char new_symbol;
+    if (f == NULL) 
+        return READING_PROBLEM;
     result = NULL;
     do {
        length++;
@@ -38,7 +40,19 @@ int safe_gets(FILE *f, char** string)
        }
        new_symbol = fgetc(f);
        if (new_symbol == EOF)
-           return READING_PROBLEM;
+       {
+           if (ferror(f)) {
+               free(result);
+               return READING_PROBLEM;
+           } else {
+               if (length == 1)
+               {
+                   free(result);
+                   return EOF;
+               } else
+                    new_symbol = '\0';
+           }
+       }
        if (new_symbol == '\n') 
            new_symbol = '\0';
        result[length - 1] = new_symbol;
@@ -55,12 +69,25 @@ int safe_gets(FILE *f, char** string)
 
 int main()
 {
+   int code;
    char* string;
-   FILE* input = fopen("input", "r");;
-   if (safe_gets(input, &string) == 0)
-       printf("%s", string);
-   else 
-       printf("ERROR");
-   free(string);
+   int k =0;
+   FILE* input = fopen("input", "r");
+   if (input == NULL) {
+       printf("Cannot open file");
+       return -2;
+   }
+   while ((code = safe_gets(input, &string)) != EOF)
+   {
+       k++;
+       if (code == 0)
+       {
+           printf("%s\n", string);
+           free(string);
+       } else {
+           printf("ERROR");
+           return code;
+       }
+   }
    return 0;
 }
