@@ -1,0 +1,43 @@
+100000000 elements in array
+Time in seconds
+
+-O0:
+step 1:         0.27
+step 5:         0.26
+step 10:        0.38
+step 100:       0.94
+step 1000:      1.13
+step 10000:     1.18
+step 100000:    0.39
+random order:   1.85
+
+-O1:
+step 1:         0.08
+step 5:         0.22
+step 10:        0.38
+step 100:       0.78
+step 1000:      0.88
+step 10000:     1.21
+step 100000:    0.25
+random order:   1.75 
+
+
+-O2:
+step 1:         0.08
+step 5:         0.22
+step 10:        0.38
+step 100:       0.80
+step 1000:      0.88
+step 10000:     1.19
+step 100000:    0.26
+random order:   1.78
+
+-O3:
+step 1:         0.08
+step 5:         0.21
+step 10:        0.41
+step 100:       0.78
+step 1000:      0.88
+step 10000:     1.21
+step 100000:    0.26
+random order:   1.80
