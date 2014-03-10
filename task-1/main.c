@@ -1,5 +1,6 @@
 #include <stdio.h> 
 #include <stdlib.h>
+#include <unistd.h>
 
 #define REALLOC_PROBLEM 1;
 #define READING_PROBLEM 2;
@@ -17,19 +18,33 @@ int safe_gets(FILE *f, char** string)
 {
     int capacity = 0;
     int length = 0;
-    char* result;
+    char* result = NULL;
     char* success;
     char new_symbol;
+    int pagesize = sysconf(_SC_PAGESIZE);
     if (f == NULL) 
         return READING_PROBLEM;
-    result = NULL;
     do {
+       new_symbol = fgetc(f);
+       if (new_symbol == EOF)
+       {
+           if (ferror(f)) {
+               free(result);
+               return READING_PROBLEM;
+           } else {
+               if (length == 0)
+                   return EOF;
+                else
+                    new_symbol = '\0';
+           }
+       }
+       if (new_symbol == '\n') 
+           new_symbol = '\0';
+
        length++;
        if (length > capacity)
        {
-           if (capacity == 0) 
-               capacity = 1;
-           else capacity *= 2;
+           capacity += pagesize;
            success = (char*)realloc(result, capacity * sizeof(char));
            if (success == NULL)
            {
@@ -38,23 +53,6 @@ int safe_gets(FILE *f, char** string)
            }
            result = success;
        }
-       new_symbol = fgetc(f);
-       if (new_symbol == EOF)
-       {
-           if (ferror(f)) {
-               free(result);
-               return READING_PROBLEM;
-           } else {
-               if (length == 1)
-               {
-                   free(result);
-                   return EOF;
-               } else
-                    new_symbol = '\0';
-           }
-       }
-       if (new_symbol == '\n') 
-           new_symbol = '\0';
        result[length - 1] = new_symbol;
     } while (new_symbol != '\0');
     success = (char*)realloc(result, length * sizeof(char));
