@@ -6,13 +6,14 @@
 #define READING_PROBLEM 2;
 
 /* You should free memory before reading another string to the same char* variable
-   Example
-   char* s = safe_gets(stdin);
-   _someoperations_
-   free(s);
-   s = safe_gets(stdin);
-   _new_operations_
-   free(s);         */
+ * Example
+ * char* s = safe_gets(stdin);
+ * _someoperations_
+ * free(s);
+ * s = safe_gets(stdin);
+ * _new_operations_
+ * free(s);         
+ */
 
 int safe_gets(FILE *f, char** string)
 {
@@ -66,6 +67,7 @@ int safe_gets(FILE *f, char** string)
         free(result);
         return REALLOC_PROBLEM;
     }
+    result = success;
     *string = result;
     return 0;
 }
@@ -75,7 +77,7 @@ int main()
     int code;
     char* string;
     int k =0;
-    FILE* input = fopen("input", "r");
+    FILE* input = fopen("input","r");
     if (input == NULL)
     {
         printf("Cannot open file");

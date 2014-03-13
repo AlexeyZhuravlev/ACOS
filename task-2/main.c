@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #define REALLOC_PROBLEM 1;
 #define READING_PROBLEM 2;
@@ -8,10 +9,12 @@
 int delete_same_substrings(const char* source, char** result, int n)
 {
     int l = strlen(source);
-    *result = (char*)malloc((l+1)*sizeof(char));
-    memcpy(*result, source, l+1);
     int begin, part_length, flag, position, block, i;
     char *current_position, *new_position, *success;
+    *result = (char*)malloc((l+1)*sizeof(char));
+    if (*result == NULL)
+        return REALLOC_PROBLEM;
+    memcpy(*result, source, l+1);
     for (begin = 0; begin < l; begin++)
     {
         for (part_length = n; part_length >= 1; part_length--)
@@ -49,7 +52,7 @@ int safe_gets(FILE *f, char** string)
     char* result = NULL;
     char* success;
     char new_symbol;
-    int pagesize = 2048;
+    int pagesize = sysconf(_SC_PAGESIZE);
     if (f == NULL)
         return READING_PROBLEM;
     do
@@ -94,10 +97,10 @@ int safe_gets(FILE *f, char** string)
         free(result);
         return REALLOC_PROBLEM;
     }
+    result = success;
     *string = result;
     return 0;
 }
-
 
 int main()
 {
@@ -116,6 +119,7 @@ int main()
             {
                 fprintf(output, "%s", s1);
                 free(s1);
+                free(s);
             }
             else
                 printf("Error");
