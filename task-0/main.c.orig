@@ -64,9 +64,9 @@ int main(int argc, char** argv)
     int *array;
     clock_t t;
     int NumberOfElements, operation_type, sum, *permutation, step;
-    if (argc < 3)
+    if (argc < 3) 
         printf("Not enougth arguments");
-    else
+    else 
     {
         NumberOfElements = atoi(argv[1]);
         operation_type = atoi(argv[2]);
@@ -74,9 +74,9 @@ int main(int argc, char** argv)
         fill(array, NumberOfElements, &sum);
         if (operation_type == 0) /* step */
         {
-            if (argc != 4)
+            if (argc != 4) 
                 printf("No step found or too many arguments");
-            else
+            else 
             {
                 step = atoi(argv[3]);
                 permutation = (int*) malloc(NumberOfElements * sizeof(int));
@@ -88,24 +88,22 @@ int main(int argc, char** argv)
                 }
                 else printf("Incorrect Sum");
             }
-        }
-        else if (operation_type == 1)   /* random access */
+        } else if (operation_type == 1) /* random access */
         {
-            if (argc!=3)
+            if (argc!=3) 
                 printf("Too many arguments");
-            else
+            else 
             {
                 permutation = (int*) malloc(NumberOfElements * sizeof(int));
                 generate_permutation(permutation, NumberOfElements);
                 t = clock();
                 if (getsum(array, permutation, NumberOfElements) == sum)
                 {
-                    printf("%f", difftime(clock(),t) / CLOCKS_PER_SEC);
-                }
+                    printf("%f", difftime(clock(),t) / CLOCKS_PER_SEC);   
+                } 
                 else printf("Incorrect Sum");
             }
-        }
-        else printf("Incorrect Operation Type");
+        } else printf("Incorrect Operation Type");
         free(array);
     }
     return 0;

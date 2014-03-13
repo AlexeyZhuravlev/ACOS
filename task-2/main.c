@@ -8,7 +8,7 @@
 int delete_same_substrings(const char* source, char** result, int n)
 {
     int l = strlen(source);
-	*result = (char*)malloc((l+1)*sizeof(char));
+    *result = (char*)malloc((l+1)*sizeof(char));
     memcpy(*result, source, l+1);
     int begin, part_length, flag, position, block, i;
     char *current_position, *new_position, *success;
@@ -16,7 +16,7 @@ int delete_same_substrings(const char* source, char** result, int n)
     {
         for (part_length = n; part_length >= 1; part_length--)
         {
-            if (begin + part_length * 2 > l) 
+            if (begin + part_length * 2 > l)
                 continue;
             flag = 1;
             for (position = begin; position < begin + part_length; position++)
@@ -29,9 +29,9 @@ int delete_same_substrings(const char* source, char** result, int n)
                 block = l - (begin + part_length * 2) + 1;
                 for (i = 0; i < block; i++)
                     current_position[i] = new_position[i];
-				l -= part_length * 2;
+                l -= part_length * 2;
                 success = (char*)realloc(*result, (l + 1) * sizeof(char));
-                if (success == NULL) 
+                if (success == NULL)
                     return REALLOC_PROBLEM;
                 *result = success;
                 begin--;
@@ -50,39 +50,44 @@ int safe_gets(FILE *f, char** string)
     char* success;
     char new_symbol;
     int pagesize = 2048;
-    if (f == NULL) 
+    if (f == NULL)
         return READING_PROBLEM;
-    do {
-       new_symbol = fgetc(f);
-       if (new_symbol == EOF)
-       {
-           if (ferror(f)) {
-               free(result);
-               return READING_PROBLEM;
-           } else {
-               if (length == 0)
-                   return EOF;
+    do
+    {
+        new_symbol = fgetc(f);
+        if (new_symbol == EOF)
+        {
+            if (ferror(f))
+            {
+                free(result);
+                return READING_PROBLEM;
+            }
+            else
+            {
+                if (length == 0)
+                    return EOF;
                 else
                     new_symbol = '\0';
-           }
-       }
-       if (new_symbol == '\n') 
-           new_symbol = '\0';
+            }
+        }
+        if (new_symbol == '\n')
+            new_symbol = '\0';
 
-       length++;
-       if (length > capacity)
-       {
-           capacity += pagesize;
-           success = (char*)realloc(result, capacity * sizeof(char));
-           if (success == NULL)
-           {
-              free(result);
-              return REALLOC_PROBLEM;
-           }
-           result = success;
-       }
-       result[length - 1] = new_symbol;
-    } while (new_symbol != '\0');
+        length++;
+        if (length > capacity)
+        {
+            capacity += pagesize;
+            success = (char*)realloc(result, capacity * sizeof(char));
+            if (success == NULL)
+            {
+                free(result);
+                return REALLOC_PROBLEM;
+            }
+            result = success;
+        }
+        result[length - 1] = new_symbol;
+    }
+    while (new_symbol != '\0');
     success = (char*)realloc(result, length * sizeof(char));
     if (success == NULL)
     {
@@ -103,16 +108,19 @@ int main()
     FILE* output = fopen("output", "w");
     if (fscanf(input, "%d\n", &n) == EOF)
         printf("Error");
-    else {
-		 if (safe_gets(input, &s) == 0)
-		 {
-			 if (delete_same_substrings(s, &s1, n) == 0)
-			{
-				fprintf(output, "%s", s1);
+    else
+    {
+        if (safe_gets(input, &s) == 0)
+        {
+            if (delete_same_substrings(s, &s1, n) == 0)
+            {
+                fprintf(output, "%s", s1);
                 free(s1);
-			} else
+            }
+            else
                 printf("Error");
-		 } else printf("Error");
+        }
+        else printf("Error");
     }
     return 0;
 }
