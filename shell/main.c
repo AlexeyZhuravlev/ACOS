@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <unistd.h>
- 
+
 #define REALLOC_PROBLEM 1
 #define READING_PROBLEM 2
- 
+
 #define JOB_END 100
 #define JOB_END_BACK 101
 #define PIPE 102
@@ -15,10 +15,10 @@
 #define COMMENT 106
 #define WORD 107
 #define ERROR 108
- 
+
 #define COMMAND_END 201
 #define EMPTY_JOB 202
- 
+
 struct program
 {
     char* name;
@@ -27,26 +27,26 @@ struct program
     char *input_file, *output_file;
     int output_type; /* 1 - rewrite, 2 - apprend */
 };
- 
+
 struct job
 {
     int background;
     struct program* programs;
     int number_of_programs;
 };
- 
+
 int divider(char a)
 {
     return a == ' ' || a== ';' || a == '&'
-        || a== '#' || a == '<' || a == '>' || a == '\0';
+           || a== '#' || a == '<' || a == '>' || a == '\0';
 }
- 
+
 void decode_macros(char** macros, int* macros_len)
 {
-	(*macros)[0] = '@'; /* for testing */
+    (*macros)[0] = '@'; /* for testing */
     return;
 }
- 
+
 void add_to_result(char** result, int* len, char** string, int* error)
 {
     char* success;
@@ -57,18 +57,19 @@ void add_to_result(char** result, int* len, char** string, int* error)
         *error = 1;
         free(*result);
         *result = NULL;
-    } else
+    }
+    else
     {
         success[*len - 1] = **string;
         *result = success;
     }
     (*string)++;
 }
- 
+
 void get_macroname(char** result, int* len, char** string, int* error)
 {
     char* macros = NULL;
-	char* macros_cpy;
+    char* macros_cpy;
     int macros_len, i;
     macros_len = 0;
     if (**string == '?' || **string == '#')
@@ -81,18 +82,18 @@ void get_macroname(char** result, int* len, char** string, int* error)
     if (macros == NULL)
         return;
     decode_macros(&macros, &macros_len);
-	macros_cpy = macros;
+    macros_cpy = macros;
     for (i = 0; i < macros_len; i++)
         add_to_result(result, len, &macros, error);
     free(macros_cpy);
 }
- 
+
 int get_lexeme(char** string, char** result)
 {
     int result_len = 0;
     int error = 0;
     char strend = '\0';
-	char* strend_ptr = &strend;
+    char* strend_ptr = &strend;
     *result = NULL;
     while (**string == ' ')
         (*string)++;
@@ -133,66 +134,68 @@ int get_lexeme(char** string, char** result)
     }
     while (!divider(**string))
     {
-       if (**string == '\\')
-       {
+        if (**string == '\\')
+        {
             (*string)++;
             add_to_result(result, &result_len, string, &error);
-       } else if (**string == '\'')
-       {
-          (*string)++;
-          while (**string != '\0' && **string != '\'')
-              add_to_result(result, &result_len, string, &error);
-		  if (**string == '\0')
-		  {
-			  fprintf(stderr, "Second ' expected");
-			  free(*result);
-			  return ERROR;
-		  }
-          (*string)++;
-       }
-       else if (**string == '"')
-       {
-           (*string)++;
-           while (**string != '\0' && **string != '"')
-           {
-               if (**string == '\\')
-               {
-                   (*string)++;
-                   add_to_result(result, &result_len, string, &error);
-               }
-               else if (**string == '$')
-               {
-                   (*string)++;
-                   get_macroname(result, &result_len, string, &error);
-               }
-               else
-                   add_to_result(result, &result_len, string, &error);
-           }
-		   if (**string == '\0')
-		   {
-			   fprintf(stderr, "second \" expected");
-			   free(*result);
-			   return ERROR;
-		   }
-           (*string)++;
-       }
-       else if (**string == '$')
-       {
-           (*string)++;
-           get_macroname(result, &result_len, string, &error);
-       }
-       else
-           add_to_result(result, &result_len, string, &error);
+        }
+        else if (**string == '\'')
+        {
+            (*string)++;
+            while (**string != '\0' && **string != '\'')
+                add_to_result(result, &result_len, string, &error);
+            if (**string == '\0')
+            {
+                fprintf(stderr, "Second ' expected");
+                free(*result);
+                return ERROR;
+            }
+            (*string)++;
+        }
+        else if (**string == '"')
+        {
+            (*string)++;
+            while (**string != '\0' && **string != '"')
+            {
+                if (**string == '\\')
+                {
+                    (*string)++;
+                    add_to_result(result, &result_len, string, &error);
+                }
+                else if (**string == '$')
+                {
+                    (*string)++;
+                    get_macroname(result, &result_len, string, &error);
+                }
+                else
+                    add_to_result(result, &result_len, string, &error);
+            }
+            if (**string == '\0')
+            {
+                fprintf(stderr, "second \" expected");
+                free(*result);
+                return ERROR;
+            }
+            (*string)++;
+        }
+        else if (**string == '$')
+        {
+            (*string)++;
+            get_macroname(result, &result_len, string, &error);
+        }
+        else
+            add_to_result(result, &result_len, string, &error);
     }
     add_to_result(result, &result_len, &strend_ptr, &error);
-    if (error) {
-		fprintf(stderr, "Error allocating memory");
+    if (error)
+    {
+        fprintf(stderr, "Error allocating memory");
         return ERROR;
-	}
+    }
     return WORD;
 }
- 
- 
+
+
 int getprogram(char** string, struct program* new_program, int* res_job)
 {
     char* lexeme;
@@ -214,34 +217,44 @@ int getprogram(char** string, struct program* new_program, int* res_job)
             }
             success[new_program->number_of_arguments - 1] = lexeme;
             new_program->arguments = success;
-        } else if (res == READ)
+        }
+        else if (res == READ)
         {
             if (new_program->input_file != NULL)
             {
+                free(lexeme);
                 fprintf(stderr, "Error: too many inputs for program");
                 return ERROR;
-            } else
+            }
+            else
             {
                 if (get_lexeme(string, &lexeme) != WORD)
                 {
+                    free(lexeme);
                     fprintf(stderr, "Error: name of input for program expected");
                     return ERROR;
-                } else
+                }
+                else
                     new_program->input_file = lexeme;
             }
-        } else if (res == WRITE || res == APPEND)
+        }
+        else if (res == WRITE || res == APPEND)
         {
             if (new_program->output_file != NULL)
             {
-                fprintf(stderr, "Error: too outputs for program");
+                free(lexeme);
+                fprintf(stderr, "Error: too many outputs for program");
                 return ERROR;
-            } else
+            }
+            else
             {
                 if (get_lexeme(string, &lexeme) != WORD)
                 {
+                    free(lexeme);
                     fprintf(stderr, "Error: name of output for program expected");
                     return ERROR;
-                } else
+                }
+                else
                 {
                     new_program->output_file = lexeme;
                     if (res == WRITE)
@@ -252,10 +265,21 @@ int getprogram(char** string, struct program* new_program, int* res_job)
             }
         }
     }
-	*res_job = res;
+    *res_job = res;
     return 0;
 }
- 
+
+void clear_program(struct program old_program)
+{
+    int i;
+    free(old_program.name);
+    free(old_program.input_file);
+    free(old_program.output_file);
+    for (i = 0; i < old_program.number_of_arguments; i++)
+        free(old_program.arguments[i]);
+    free(old_program.arguments);
+}
+
 int getjob(char** string, struct job* new_job)
 {
     char* lexeme;
@@ -264,19 +288,19 @@ int getjob(char** string, struct job* new_job)
     struct program* success;
     new_job->number_of_programs = 0;
     new_job->programs = NULL;
- 
-	do
+
+    do
     {
-		res = get_lexeme(string, &lexeme);
-		if (res == JOB_END || res == JOB_END_BACK || res == COMMENT)
-		{
-			if (new_job->number_of_programs > 0)
-			{
-				fprintf(stderr, "Program name after pipe expected");
-				return ERROR;
-			}
-			break;
-		}
+        res = get_lexeme(string, &lexeme);
+        if (res == JOB_END || res == JOB_END_BACK || res == COMMENT)
+        {
+            if (new_job->number_of_programs > 0)
+            {
+                fprintf(stderr, "Program name after pipe expected");
+                return ERROR;
+            }
+            break;
+        }
         if (res == ERROR)
         {
             return ERROR;
@@ -289,11 +313,14 @@ int getjob(char** string, struct job* new_job)
         new_program.name = lexeme;
         new_program.input_file = NULL;
         new_program.output_file = NULL;
-		new_program.number_of_arguments = 0;
-		new_program.arguments = NULL;
-		new_job->number_of_programs++;
+        new_program.number_of_arguments = 0;
+        new_program.arguments = NULL;
+        new_job->number_of_programs++;
         if (getprogram(string, &new_program, &res) == ERROR)
+        {
+            clear_program(new_program);
             return ERROR;
+        }
         success = (struct program*)realloc(new_job->programs, new_job->number_of_programs * sizeof(struct program));
         if (success == NULL)
         {
@@ -302,7 +329,8 @@ int getjob(char** string, struct job* new_job)
         }
         success[new_job->number_of_programs - 1] = new_program;
         new_job->programs = success;
-    } while (res != JOB_END_BACK && res != JOB_END && res != COMMENT);
+    }
+    while (res != JOB_END_BACK && res != JOB_END && res != COMMENT);
     if (res == JOB_END_BACK)
         new_job->background = 1;
     else
@@ -316,7 +344,7 @@ int getjob(char** string, struct job* new_job)
     }
     return 0;
 }
- 
+
 int command_parsing(char* command, struct job** jobs, int* number_of_jobs)
 {
     int res;
@@ -343,7 +371,7 @@ int command_parsing(char* command, struct job** jobs, int* number_of_jobs)
     }
     return 0;
 }
- 
+
 int safe_gets(FILE *f, char** string)
 {
     int capacity = 0;
@@ -374,7 +402,7 @@ int safe_gets(FILE *f, char** string)
         }
         if (new_symbol == '\n')
             new_symbol = '\0';
- 
+
         length++;
         if (length > capacity)
         {
@@ -400,11 +428,11 @@ int safe_gets(FILE *f, char** string)
     *string = result;
     return 0;
 }
- 
+
 void print_program(struct program prog)
 {
     int i;
-    printf("Program %s \n", prog.name);
+    printf("Program: %s \n", prog.name);
     printf("	Arguments: ");
     for (i = 0; i < prog.number_of_arguments; i++)
         printf("%s ; ",prog.arguments[i]);
@@ -426,7 +454,7 @@ void print_program(struct program prog)
             printf("for append");
     }
 }
- 
+
 void print_jobs(int n, struct job* jobs)
 {
     int i, j;
@@ -441,31 +469,21 @@ void print_jobs(int n, struct job* jobs)
     }
 }
 
-void clear_program(struct program old_program)
-{
-	int i;
-	free(old_program.name);
-	free(old_program.input_file);
-	free(old_program.output_file);
-	for (i = 0; i < old_program.number_of_arguments; i++)
-		free(old_program.arguments[i]);
-	free(old_program.arguments);
-}
 
 void clear_job(struct job old_job)
 {
-	int i;
-	for (i = 0; i < old_job.number_of_programs; i++)
-		clear_program(old_job.programs[i]);
-	free(old_job.programs);
+    int i;
+    for (i = 0; i < old_job.number_of_programs; i++)
+        clear_program(old_job.programs[i]);
+    free(old_job.programs);
 }
 
 void clear_information(struct job* jobs, int n)
 {
-	int i;
-	for (i = 0; i < n; i++)
-		clear_job(jobs[i]);
-	free(jobs);
+    int i;
+    for (i = 0; i < n; i++)
+        clear_job(jobs[i]);
+    free(jobs);
 }
 
 int main(int argc, char** argv)
@@ -475,9 +493,9 @@ int main(int argc, char** argv)
     struct job* jobs;
     safe_gets(stdin, &s);
     res = command_parsing(s,&jobs,&n);
-	free(s);
-	if (res == 0)
-		print_jobs(n, jobs);
-	clear_information(jobs, n);
+    free(s);
+    if (res == 0)
+        print_jobs(n, jobs);
+    clear_information(jobs, n);
     return 0;
 }
