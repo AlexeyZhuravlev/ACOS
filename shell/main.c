@@ -37,7 +37,7 @@ struct job
 
 int divider(char a)
 {
-    return a == ' ' || a== ';' || a == '&'
+    return a == ' ' || a== ';' || a == '&' || a == '|'
            || a== '#' || a == '<' || a == '>' || a == '\0';
 }
 
@@ -146,7 +146,7 @@ int get_lexeme(char** string, char** result)
                 add_to_result(result, &result_len, string, &error);
             if (**string == '\0')
             {
-                fprintf(stderr, "Second ' expected");
+                fprintf(stderr, "Second ' expected\n");
                 free(*result);
                 return ERROR;
             }
@@ -172,7 +172,7 @@ int get_lexeme(char** string, char** result)
             }
             if (**string == '\0')
             {
-                fprintf(stderr, "second \" expected");
+                fprintf(stderr, "second \" expected\n");
                 free(*result);
                 return ERROR;
             }
@@ -189,7 +189,7 @@ int get_lexeme(char** string, char** result)
     add_to_result(result, &result_len, &strend_ptr, &error);
     if (error)
     {
-        fprintf(stderr, "Error allocating memory");
+        fprintf(stderr, "Error allocating memory\n");
         return ERROR;
     }
     return WORD;
@@ -212,7 +212,7 @@ int getprogram(char** string, struct program* new_program, int* res_job)
             success = (char**)realloc(new_program->arguments, new_program->number_of_arguments * sizeof(char*));
             if (success == NULL)
             {
-                fprintf(stderr, "Error allocating memory");
+                fprintf(stderr, "Error allocating memory\n");
                 return ERROR;
             }
             success[new_program->number_of_arguments - 1] = lexeme;
@@ -223,7 +223,7 @@ int getprogram(char** string, struct program* new_program, int* res_job)
             if (new_program->input_file != NULL)
             {
                 free(lexeme);
-                fprintf(stderr, "Error: too many inputs for program");
+                fprintf(stderr, "Error: too many inputs for program\n");
                 return ERROR;
             }
             else
@@ -231,7 +231,7 @@ int getprogram(char** string, struct program* new_program, int* res_job)
                 if (get_lexeme(string, &lexeme) != WORD)
                 {
                     free(lexeme);
-                    fprintf(stderr, "Error: name of input for program expected");
+                    fprintf(stderr, "Error: name of input for program expected\n");
                     return ERROR;
                 }
                 else
@@ -243,7 +243,7 @@ int getprogram(char** string, struct program* new_program, int* res_job)
             if (new_program->output_file != NULL)
             {
                 free(lexeme);
-                fprintf(stderr, "Error: too many outputs for program");
+                fprintf(stderr, "Error: too many outputs for program\n");
                 return ERROR;
             }
             else
@@ -251,7 +251,7 @@ int getprogram(char** string, struct program* new_program, int* res_job)
                 if (get_lexeme(string, &lexeme) != WORD)
                 {
                     free(lexeme);
-                    fprintf(stderr, "Error: name of output for program expected");
+                    fprintf(stderr, "Error: name of output for program expected\n");
                     return ERROR;
                 }
                 else
@@ -296,7 +296,7 @@ int getjob(char** string, struct job* new_job)
         {
             if (new_job->number_of_programs > 0)
             {
-                fprintf(stderr, "Program name after pipe expected");
+                fprintf(stderr, "Program name after pipe expected\n");
                 return ERROR;
             }
             break;
@@ -307,7 +307,7 @@ int getjob(char** string, struct job* new_job)
         }
         if (res != WORD)
         {
-            fprintf(stderr, "No Program Name");
+            fprintf(stderr, "No Program Name\n");
             return ERROR;
         }
         new_program.name = lexeme;
@@ -324,7 +324,7 @@ int getjob(char** string, struct job* new_job)
         success = (struct program*)realloc(new_job->programs, new_job->number_of_programs * sizeof(struct program));
         if (success == NULL)
         {
-            fprintf(stderr, "Error allocation memory");
+            fprintf(stderr, "Error allocation memory\n");
             return ERROR;
         }
         success[new_job->number_of_programs - 1] = new_program;
@@ -362,7 +362,7 @@ int command_parsing(char* command, struct job** jobs, int* number_of_jobs)
             success = (struct job*) realloc(*jobs, (*number_of_jobs) * sizeof(struct job));
             if (success == NULL)
             {
-                fprintf(stderr,"Error allocating memory");
+                fprintf(stderr,"Error allocating memory\n");
                 return ERROR;
             }
             *jobs = success;
