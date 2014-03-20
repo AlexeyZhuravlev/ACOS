@@ -65,7 +65,7 @@ int safe_gets(FILE *f, char** string)
                 free(result);
                 return READING_PROBLEM;
             }
-            else
+            else if (feof(f))
             {
                 if (length == 0)
                     return EOF;
