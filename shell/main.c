@@ -280,6 +280,14 @@ void clear_program(struct program old_program)
     free(old_program.arguments);
 }
 
+void clear_job(struct job old_job)
+{
+    int i;
+    for (i = 0; i < old_job.number_of_programs; i++)
+        clear_program(old_job.programs[i]);
+    free(old_job.programs);
+}
+
 int getjob(char** string, struct job* new_job)
 {
     char* lexeme;
@@ -355,7 +363,10 @@ int command_parsing(char* command, struct job** jobs, int* number_of_jobs)
     while ((res = getjob(&command, &new_job)) != COMMAND_END)
     {
         if (res == ERROR)
+        {
+            clear_job(new_job);
             return ERROR;
+        }
         if (res != EMPTY_JOB)
         {
             (*number_of_jobs)++;
@@ -470,13 +481,6 @@ void print_jobs(int n, struct job* jobs)
 }
 
 
-void clear_job(struct job old_job)
-{
-    int i;
-    for (i = 0; i < old_job.number_of_programs; i++)
-        clear_program(old_job.programs[i]);
-    free(old_job.programs);
-}
 
 void clear_information(struct job* jobs, int n)
 {
