@@ -109,8 +109,11 @@ int main()
     char* s1;
     FILE* input = fopen("input", "r");
     FILE* output = fopen("output", "w");
+    if (input == NULL)
+        fprintf(stderr, "Error opening file");
+    else
     if (fscanf(input, "%d\n", &n) == EOF)
-        printf("Error");
+        fprintf(stderr, "Error");
     else
     {
         if (safe_gets(input, &s) == 0)
@@ -122,9 +125,9 @@ int main()
                 free(s);
             }
             else
-                printf("Error");
+                fprintf(stderr, "Error");
         }
-        else printf("Error");
+        else fprintf(stderr, "Error");
     }
     return 0;
 }

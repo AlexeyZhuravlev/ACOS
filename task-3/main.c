@@ -148,7 +148,11 @@ int main()
     FILE* output = fopen("output","w");
     char *string, *old_sample, *new_sample, *result;
     int code;
-
+    if (input == NULL)
+    {
+        fprintf(stderr, "Error opening file");
+        return 1;
+    }
     code = safe_gets(input, &string);
     if (code)
         return code;
