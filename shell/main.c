@@ -422,8 +422,8 @@ int safe_gets(FILE *f, char** string)
                     new_symbol = '\0';
             }
         }
- /*       if (new_symbol == '\n')
-            new_symbol = '\0'; */
+        /*       if (new_symbol == '\n')
+                   new_symbol = '\0'; */
 
         length++;
         if (length > capacity)
