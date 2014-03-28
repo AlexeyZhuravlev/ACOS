@@ -38,7 +38,7 @@ struct job
 int divider(char a)
 {
     return a == ' ' || a== ';' || a == '&' || a == '|'
-           || a== '#' || a == '<' || a == '>' || a == '\0';
+           || a== '#' || a == '<' || a == '>' || a == '\0' || a == '\n';
 }
 
 void decode_macros(char** macros, int* macros_len)
@@ -101,7 +101,7 @@ int get_lexeme(char** string, char** result)
         (*string)++;
         return PIPE;
     }
-    if (**string == ';')
+    if (**string == ';' || **string == '\n')
     {
         (*string)++;
         return JOB_END;
@@ -136,7 +136,9 @@ int get_lexeme(char** string, char** result)
         if (**string == '\\')
         {
             (*string)++;
-            add_to_result(result, &result_len, string, &error);
+            if (**string == '\n') (*string)++;
+            if (**string != '\0')
+                add_to_result(result, &result_len, string, &error);
         }
         else if (**string == '\'')
         {
@@ -146,6 +148,7 @@ int get_lexeme(char** string, char** result)
                 if (**string == '\\')
                 {
                     (*string)++;
+                    if (**string == '\n') (*string)++;
                     if (**string != '\0')
                         add_to_result(result, &result_len, string, &error);
                 }
@@ -168,7 +171,9 @@ int get_lexeme(char** string, char** result)
                 if (**string == '\\')
                 {
                     (*string)++;
-                    add_to_result(result, &result_len, string, &error);
+                    if (**string == '\n') (*string)++;
+                    if (**string != '\0')
+                        add_to_result(result, &result_len, string, &error);
                 }
                 else if (**string == '$')
                 {
@@ -417,8 +422,8 @@ int safe_gets(FILE *f, char** string)
                     new_symbol = '\0';
             }
         }
-        if (new_symbol == '\n')
-            new_symbol = '\0';
+ /*       if (new_symbol == '\n')
+            new_symbol = '\0'; */
 
         length++;
         if (length > capacity)
@@ -501,12 +506,9 @@ int main(int argc, char** argv)
     char *s;
     int n = 0, res;
     struct job* jobs = NULL;
-    while (safe_gets(stdin, &s) != EOF)
-    {
-        res = command_parsing(s,&jobs,&n);
-        free(s);
-        if (res != 0) break;
-    }
+    safe_gets(stdin, &s);
+    res = command_parsing(s,&jobs,&n);
+    free(s);
     if (res == 0)
         print_jobs(n, jobs);
     clear_information(jobs, n);
