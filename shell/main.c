@@ -43,7 +43,6 @@ int divider(char a)
 
 void decode_macros(char** macros, int* macros_len)
 {
-    (*macros)[0] = '@'; /* for testing */
     return;
 }
 
@@ -143,7 +142,16 @@ int get_lexeme(char** string, char** result)
         {
             (*string)++;
             while (**string != '\0' && **string != '\'')
-                add_to_result(result, &result_len, string, &error);
+            {
+                if (**string == '\\')
+                {
+                    (*string)++;
+                    if (**string != '\0')
+                        add_to_result(result, &result_len, string, &error);
+                }
+                else
+                    add_to_result(result, &result_len, string, &error);
+            }
             if (**string == '\0')
             {
                 fprintf(stderr, "Second ' expected\n");
@@ -323,12 +331,12 @@ int getjob(char** string, struct job* new_job)
         new_program.output_file = NULL;
         new_program.number_of_arguments = 0;
         new_program.arguments = NULL;
-        new_job->number_of_programs++;
         if (getprogram(string, &new_program, &res) == ERROR)
         {
             clear_program(new_program);
             return ERROR;
         }
+        new_job->number_of_programs++;
         success = (struct program*)realloc(new_job->programs, new_job->number_of_programs * sizeof(struct program));
         if (success == NULL)
         {
@@ -358,8 +366,6 @@ int command_parsing(char* command, struct job** jobs, int* number_of_jobs)
     int res;
     struct job new_job;
     struct job* success;
-    *jobs = NULL;
-    *number_of_jobs = 0;
     while ((res = getjob(&command, &new_job)) != COMMAND_END)
     {
         if (res == ERROR)
@@ -493,11 +499,14 @@ void clear_information(struct job* jobs, int n)
 int main(int argc, char** argv)
 {
     char *s;
-    int n, res;
-    struct job* jobs;
-    safe_gets(stdin, &s);
-    res = command_parsing(s,&jobs,&n);
-    free(s);
+    int n = 0, res;
+    struct job* jobs = NULL;
+    while (safe_gets(stdin, &s) != EOF)
+    {
+        res = command_parsing(s,&jobs,&n);
+        free(s);
+        if (res != 0) break;
+    }
     if (res == 0)
         print_jobs(n, jobs);
     clear_information(jobs, n);
