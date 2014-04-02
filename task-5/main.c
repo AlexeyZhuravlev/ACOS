@@ -1,4 +1,5 @@
-#define _POSIX_SOURCE
+#define _POSIX_C_SOURCE 200112L
+
 #include <sys/types.h>
 #include <signal.h>
 #include <unistd.h>
