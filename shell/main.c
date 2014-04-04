@@ -12,7 +12,6 @@
 #define READ 103
 #define WRITE 104
 #define APPEND 105
-#define COMMENT 106
 #define WORD 107
 #define ERROR 108
 
@@ -35,10 +34,12 @@ struct job
     int number_of_programs;
 };
 
+int safe_gets(FILE*, char**);
+
 int divider(char a)
 {
     return a == ' ' || a== ';' || a == '&' || a == '|'
-           || a== '#' || a == '<' || a == '>' || a == '\0' || a == '\n';
+           || a== '#' || a == '<' || a == '>' || a == '\0';
 }
 
 void decode_macros(char** macros, int* macros_len)
@@ -73,7 +74,14 @@ void get_macroname(char** result, int* len, char** string, int* error)
     macros_len = 0;
     if (**string == '?' || **string == '#')
         add_to_result(&macros, &macros_len, string, error);
-    else
+    else if (**string == '{')
+    {
+        (*string)++;
+        while (**string != '\0' && **string != '}')
+            add_to_result(&macros, &macros_len, string, error);
+        if (**string == '}')
+            (*string)++;
+    } else
     {
         while (isalpha(**string) || isdigit(**string) || **string == '_')
             add_to_result(&macros, &macros_len, string, error);
@@ -87,12 +95,14 @@ void get_macroname(char** result, int* len, char** string, int* error)
     free(macros_cpy);
 }
 
-int get_lexeme(char** string, char** result)
+int get_lexeme(char** begin, char** string, char** result)
 {
     int result_len = 0;
     int error = 0;
     char strend = '\0';
+    char enter = '\n';
     char* strend_ptr = &strend;
+    char* enter_ptr = &enter;
     *result = NULL;
     while (**string == ' ')
         (*string)++;
@@ -101,7 +111,7 @@ int get_lexeme(char** string, char** result)
         (*string)++;
         return PIPE;
     }
-    if (**string == ';' || **string == '\n')
+    if (**string == ';')
     {
         (*string)++;
         return JOB_END;
@@ -111,10 +121,8 @@ int get_lexeme(char** string, char** result)
         (*string)++;
         return JOB_END_BACK;
     }
-    if (**string == '#' || **string == '\0')
-    {
-        return COMMENT;
-    }
+    if (**string == '\0' || **string == '#')
+        return COMMAND_END;
     if (**string == '<')
     {
         (*string)++;
@@ -136,58 +144,77 @@ int get_lexeme(char** string, char** result)
         if (**string == '\\')
         {
             (*string)++;
-            if (**string == '\n') (*string)++;
-            if (**string != '\0')
-                add_to_result(result, &result_len, string, &error);
+            if (**string == '\0') 
+            {
+                free(*begin);
+                safe_gets(stdin, begin);
+                (*string) = (*begin);
+            }
+            else
+            add_to_result(result, &result_len, string, &error);
         }
         else if (**string == '\'')
         {
             (*string)++;
-            while (**string != '\0' && **string != '\'')
+            while (**string != '\'')
             {
-                if (**string == '\\')
+                if (**string == '\0')
                 {
-                    (*string)++;
-                    if (**string == '\n') (*string)++;
-                    if (**string != '\0')
-                        add_to_result(result, &result_len, string, &error);
-                }
-                else
-                    add_to_result(result, &result_len, string, &error);
-            }
-            if (**string == '\0')
-            {
-                fprintf(stderr, "Second ' expected\n");
-                free(*result);
-                return ERROR;
+                    add_to_result(result, &result_len, &enter_ptr, &error);
+                    enter_ptr = &enter;
+                    free(*begin);
+                    if (safe_gets(stdin, begin) == EOF)
+                    {
+                        free(*result);
+                        fprintf(stderr, "Unexpected end of file");
+                        return ERROR;
+                    }
+                    (*string) = *begin;
+                } else
+                add_to_result(result, &result_len, string, &error);
             }
             (*string)++;
         }
         else if (**string == '"')
         {
             (*string)++;
-            while (**string != '\0' && **string != '"')
+            while (**string != '"')
             {
-                if (**string == '\\')
+                if (**string == '\0')
+                {
+                    add_to_result(result, &result_len, &enter_ptr, &error);
+                    enter_ptr = &enter;
+                    free(*begin);
+                    if (safe_gets(stdin, begin) == EOF)
+                    {
+                        free(*result);
+                        fprintf(stderr, "Unexpected end of file");
+                        return ERROR;
+                    }
+                    (*string) = *begin;
+                } else if (**string == '\\')
                 {
                     (*string)++;
-                    if (**string == '\n') (*string)++;
-                    if (**string != '\0')
-                        add_to_result(result, &result_len, string, &error);
+                    if (**string == '\0')
+                    {
+                        free(*begin);
+                        if (safe_gets(stdin, begin) == EOF)
+                        {
+                            free(*result);
+                            fprintf(stderr, "Unexpected end of file");
+                            return ERROR;
+                        }
+                        (*string) = *begin;
+                    } else
+                    add_to_result(result, &result_len, string, &error);
                 }
                 else if (**string == '$')
                 {
                     (*string)++;
                     get_macroname(result, &result_len, string, &error);
                 }
-                else
+                else 
                     add_to_result(result, &result_len, string, &error);
-            }
-            if (**string == '\0')
-            {
-                fprintf(stderr, "second \" expected\n");
-                free(*result);
-                return ERROR;
             }
             (*string)++;
         }
@@ -209,13 +236,13 @@ int get_lexeme(char** string, char** result)
 }
 
 
-int getprogram(char** string, struct program* new_program, int* res_job)
+int getprogram(char** begin, char** string, struct program* new_program, int* res_job)
 {
     char* lexeme;
     int res;
     char** success;
-    while ((res = get_lexeme(string, &lexeme)) != JOB_END &&
-            res != JOB_END_BACK && res != PIPE && res != COMMENT)
+    while ((res = get_lexeme(begin, string, &lexeme)) != JOB_END &&
+            res != JOB_END_BACK && res != PIPE && res != COMMAND_END)
     {
         if (res == ERROR)
             return ERROR;
@@ -241,7 +268,7 @@ int getprogram(char** string, struct program* new_program, int* res_job)
             }
             else
             {
-                if (get_lexeme(string, &lexeme) != WORD)
+                if (get_lexeme(begin, string, &lexeme) != WORD)
                 {
                     free(lexeme);
                     fprintf(stderr, "Error: name of input for program expected\n");
@@ -261,7 +288,7 @@ int getprogram(char** string, struct program* new_program, int* res_job)
             }
             else
             {
-                if (get_lexeme(string, &lexeme) != WORD)
+                if (get_lexeme(begin, string, &lexeme) != WORD)
                 {
                     free(lexeme);
                     fprintf(stderr, "Error: name of output for program expected\n");
@@ -296,12 +323,13 @@ void clear_program(struct program old_program)
 void clear_job(struct job old_job)
 {
     int i;
+
     for (i = 0; i < old_job.number_of_programs; i++)
         clear_program(old_job.programs[i]);
     free(old_job.programs);
 }
 
-int getjob(char** string, struct job* new_job)
+int getjob(char** begin, char** string, struct job* new_job)
 {
     char* lexeme;
     int res = 0;
@@ -312,8 +340,8 @@ int getjob(char** string, struct job* new_job)
 
     do
     {
-        res = get_lexeme(string, &lexeme);
-        if (res == JOB_END || res == JOB_END_BACK || res == COMMENT)
+        res = get_lexeme(begin, string, &lexeme);
+        if (res == JOB_END || res == JOB_END_BACK || res == COMMAND_END)
         {
             if (new_job->number_of_programs > 0)
             {
@@ -336,7 +364,7 @@ int getjob(char** string, struct job* new_job)
         new_program.output_file = NULL;
         new_program.number_of_arguments = 0;
         new_program.arguments = NULL;
-        if (getprogram(string, &new_program, &res) == ERROR)
+        if (getprogram(begin, string, &new_program, &res) == ERROR)
         {
             clear_program(new_program);
             return ERROR;
@@ -351,14 +379,14 @@ int getjob(char** string, struct job* new_job)
         success[new_job->number_of_programs - 1] = new_program;
         new_job->programs = success;
     }
-    while (res != JOB_END_BACK && res != JOB_END && res != COMMENT);
+    while (res != JOB_END_BACK && res != JOB_END && res != COMMAND_END);
     if (res == JOB_END_BACK)
         new_job->background = 1;
     else
         new_job->background = 0;
     if ((*new_job).number_of_programs == 0)
     {
-        if (res == COMMENT)
+        if (res == COMMAND_END)
             return COMMAND_END;
         else
             return EMPTY_JOB;
@@ -366,12 +394,12 @@ int getjob(char** string, struct job* new_job)
     return 0;
 }
 
-int command_parsing(char* command, struct job** jobs, int* number_of_jobs)
+int command_parsing(char** begin, char* command, struct job** jobs, int* number_of_jobs)
 {
     int res;
     struct job new_job;
     struct job* success;
-    while ((res = getjob(&command, &new_job)) != COMMAND_END)
+    while ((res = getjob(begin, &command, &new_job)) != COMMAND_END)
     {
         if (res == ERROR)
         {
@@ -471,9 +499,9 @@ void print_program(struct program prog)
     {
         printf("%s ", prog.output_file);
         if (prog.output_type == 1)
-            printf("for rewrite");
+            printf("for rewrite\n");
         else
-            printf("for append");
+            printf("for append\n");
     }
 }
 
@@ -504,13 +532,16 @@ void clear_information(struct job* jobs, int n)
 int main(int argc, char** argv)
 {
     char *s;
-    int n = 0, res;
-    struct job* jobs = NULL;
-    safe_gets(stdin, &s);
-    res = command_parsing(s,&jobs,&n);
-    free(s);
-    if (res == 0)
-        print_jobs(n, jobs);
-    clear_information(jobs, n);
+    while (safe_gets(stdin, &s) != EOF)
+    {
+        char **back_ptr = &s;
+        int n = 0, res;
+        struct job* jobs = NULL;
+        res = command_parsing(back_ptr, s, &jobs, &n);
+        free(*back_ptr);
+        if (res == 0)
+            print_jobs(n, jobs);
+        clear_information(jobs, n);
+    }
     return 0;
 }
