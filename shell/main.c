@@ -2,6 +2,11 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/wait.h>
 
 #define REALLOC_PROBLEM 1
 #define READING_PROBLEM 2
@@ -24,7 +29,7 @@ struct program
     int number_of_arguments;
     char** arguments;
     char *input_file, *output_file;
-    int output_type; /* 1 - rewrite, 2 - apprend */
+    int output_type; /* 1 - rewrite, 2 - append */
 };
 
 struct job
@@ -34,6 +39,8 @@ struct job
     int number_of_programs;
 };
 
+char *strdup(const char *s);
+
 int safe_gets(FILE*, char**);
 
 int divider(char a)
@@ -42,9 +49,14 @@ int divider(char a)
            || a== '#' || a == '<' || a == '>' || a == '\0';
 }
 
-void decode_macros(char** macros, int* macros_len)
+char* decode_macros(char** macros, int* macros_len)
 {
-    return;
+    char* result = getenv(*macros);
+    free(*macros);
+    if (result == NULL)
+        return NULL;
+    *macros_len = strlen(result);
+    return result;
 }
 
 void add_to_result(char** result, int* len, char** string, int* error)
@@ -69,8 +81,9 @@ void add_to_result(char** result, int* len, char** string, int* error)
 void get_macroname(char** result, int* len, char** string, int* error)
 {
     char* macros = NULL;
-    char* macros_cpy;
     int macros_len, i;
+    char strend = '\0';
+    char* strend_ptr = &strend;
     macros_len = 0;
     if (**string == '?' || **string == '#')
         add_to_result(&macros, &macros_len, string, error);
@@ -88,11 +101,12 @@ void get_macroname(char** result, int* len, char** string, int* error)
     }
     if (macros == NULL)
         return;
-    decode_macros(&macros, &macros_len);
-    macros_cpy = macros;
+    add_to_result(&macros, &macros_len, &strend_ptr, error);
+    macros = decode_macros(&macros, &macros_len);
+    if (macros == NULL)
+        return;
     for (i = 0; i < macros_len; i++)
         add_to_result(result, len, &macros, error);
-    free(macros_cpy);
 }
 
 int get_lexeme(char** begin, char** string, char** result)
@@ -147,6 +161,7 @@ int get_lexeme(char** begin, char** string, char** result)
             if (**string == '\0') 
             {
                 free(*begin);
+                printf("> ");
                 safe_gets(stdin, begin);
                 (*string) = (*begin);
             }
@@ -163,6 +178,7 @@ int get_lexeme(char** begin, char** string, char** result)
                     add_to_result(result, &result_len, &enter_ptr, &error);
                     enter_ptr = &enter;
                     free(*begin);
+                    printf("> ");
                     if (safe_gets(stdin, begin) == EOF)
                     {
                         free(*result);
@@ -185,6 +201,7 @@ int get_lexeme(char** begin, char** string, char** result)
                     add_to_result(result, &result_len, &enter_ptr, &error);
                     enter_ptr = &enter;
                     free(*begin);
+                    printf("> ");
                     if (safe_gets(stdin, begin) == EOF)
                     {
                         free(*result);
@@ -198,6 +215,7 @@ int get_lexeme(char** begin, char** string, char** result)
                     if (**string == '\0')
                     {
                         free(*begin);
+                        printf("> ");
                         if (safe_gets(stdin, begin) == EOF)
                         {
                             free(*result);
@@ -362,8 +380,10 @@ int getjob(char** begin, char** string, struct job* new_job)
         new_program.name = lexeme;
         new_program.input_file = NULL;
         new_program.output_file = NULL;
-        new_program.number_of_arguments = 0;
-        new_program.arguments = NULL;
+        new_program.number_of_arguments = 1;
+        new_program.arguments = (char**)malloc(sizeof(char*));
+        if (new_program.arguments != NULL)
+            new_program.arguments[0] = strdup(lexeme);
         if (getprogram(begin, string, &new_program, &res) == ERROR)
         {
             clear_program(new_program);
@@ -371,7 +391,7 @@ int getjob(char** begin, char** string, struct job* new_job)
         }
         new_job->number_of_programs++;
         success = (struct program*)realloc(new_job->programs, new_job->number_of_programs * sizeof(struct program));
-        if (success == NULL)
+        if (success == NULL || new_program.arguments == NULL)
         {
             fprintf(stderr, "Error allocation memory\n");
             return ERROR;
@@ -529,9 +549,163 @@ void clear_information(struct job* jobs, int n)
     free(jobs);
 }
 
+void mcd()
+{
+
+}
+
+void mpwd()
+{
+
+}
+
+void fg()
+{
+    
+}
+
+void bg()
+{
+    
+}
+
+void jobs()
+{
+    
+}
+
+void mexit()
+{
+    exit(0);
+}
+
+void export()
+{
+    
+}
+
+int try_built_in(struct job* new_job)
+{
+    if (new_job->number_of_programs != 1)
+        return 0;
+    if (strcmp(new_job->programs[0].name, "cd") == 0)
+        mcd();
+    if (strcmp(new_job->programs[0].name, "pwd") == 0)
+        mpwd();
+    if (strcmp(new_job->programs[0].name, "jobs") == 0)
+        jobs();
+    if (strcmp(new_job->programs[0].name, "fg") == 0)
+        fg();
+    if (strcmp(new_job->programs[0].name, "bg") == 0)
+        bg();
+    if (strcmp(new_job->programs[0].name, "exit") == 0)
+        mexit();
+    if (strcmp(new_job->programs[0].name, "export") == 0)
+        export();
+    return 0;
+}
+
+void run_job_foreground(struct job* new_job)
+{
+    int i, pid, j;
+    int** lakes;
+    char** success;
+    int new_quan;
+    if (try_built_in(new_job) != 0)
+        return;
+    lakes = (int**)malloc((new_job->number_of_programs - 1) * sizeof(int*));
+    for (i = 0; i < new_job->number_of_programs - 1; i++)
+    {
+        lakes[i] = (int*)malloc(2 * sizeof(int));
+        pipe(lakes[i]);
+        if (new_job->programs[i].output_file != NULL || new_job->programs[i + 1].input_file != NULL)
+        {
+            close(lakes[i][0]);
+            close(lakes[i][1]);
+        }
+    }
+    for (i = 0; i < new_job->number_of_programs; i++)
+    {
+            pid = fork();
+            if (pid == 0)
+            {
+                for (j = 0; j < new_job->number_of_programs - 1; j++)
+                {
+                    if (j != i - 1) 
+                        close(lakes[j][0]);
+                    if (j != i)
+                        close(lakes[j][1]);
+                }
+                if (new_job->programs[i].input_file != NULL)
+                {
+                    int input = open(new_job->programs[i].input_file, O_RDONLY);
+                    dup2(input, 0);
+                    close(input);
+                } 
+                else if (i > 0)
+                {
+                    dup2(lakes[i - 1][0], 0);
+                    close(lakes[i - 1][0]);
+                }
+                if (new_job->programs[i].output_file != NULL)
+                {
+                    int output;
+                    int flags = O_WRONLY | O_CREAT;
+                    if (new_job->programs[i].output_type == 2)
+                        flags = flags | O_APPEND;
+                    output = open(new_job->programs[i].output_file, flags, 0666);
+                    dup2(output, 1);
+                    close(output);
+                }
+                else if (i < new_job->number_of_programs - 1)
+                {
+                    dup2(lakes[i][1], 1);
+                    close(lakes[i][1]);
+                }
+                new_quan = new_job->programs[i].number_of_arguments + 1;
+                success = (char**)realloc(new_job->programs[i].arguments, new_quan * sizeof(char*));
+                if (success == NULL)
+                {
+                    fprintf(stderr, "Execution problem");
+                    exit(1);
+                }
+                new_job->programs[i].arguments = success;
+                new_job->programs[i].arguments[new_quan - 1] = NULL;
+                execvp(new_job->programs[i].name, new_job->programs[i].arguments);
+                fprintf(stderr, "Execution problem");
+                exit(1);
+            }
+    }
+    for (i = 0; i < new_job->number_of_programs - 1; i++)
+    {
+        close(lakes[i][0]);
+        close(lakes[i][1]);
+    }
+    for (i = 0; i < new_job->number_of_programs; i++)
+        wait(NULL);
+}
+
+void run_job_background(struct job* new_job)
+{
+    fprintf(stderr, "Background jobs not supported yet\n");
+}
+
+void run_jobs(int n, struct job* jobs)
+{
+    int i;
+    for (i = 0; i < n; i++)
+    {
+        if (jobs->background == 0)
+            run_job_foreground(&jobs[i]);
+        else
+            run_job_background(&jobs[i]);
+    }
+}
+
 int main(int argc, char** argv)
 {
     char *s;
+    printf("msh$ ");
     while (safe_gets(stdin, &s) != EOF)
     {
         char **back_ptr = &s;
@@ -540,8 +714,9 @@ int main(int argc, char** argv)
         res = command_parsing(back_ptr, s, &jobs, &n);
         free(*back_ptr);
         if (res == 0)
-            print_jobs(n, jobs);
+            run_jobs(n, jobs);
         clear_information(jobs, n);
+        printf("msh$ ");
     }
     return 0;
 }
