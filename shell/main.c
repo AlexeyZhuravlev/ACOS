@@ -40,6 +40,7 @@ struct job
 };
 
 char *strdup(const char *s);
+pid_t getpgid(pid_t pid);
 
 int safe_gets(FILE*, char**);
 
@@ -353,6 +354,7 @@ int getjob(char** begin, char** string, struct job* new_job)
     int res = 0;
     struct program new_program;
     struct program* success;
+    char** succ;
     new_job->number_of_programs = 0;
     new_job->programs = NULL;
 
@@ -389,6 +391,15 @@ int getjob(char** begin, char** string, struct job* new_job)
             clear_program(new_program);
             return ERROR;
         }
+        succ = (char**)realloc(new_program.arguments, (new_program.number_of_arguments + 1) * sizeof(char*));
+        if (succ == NULL)
+        {
+            clear_program(new_program);
+            fprintf(stderr, "Error allocation memory\n");
+            return ERROR;
+        }
+        succ[new_program.number_of_arguments] = NULL;
+        new_program.arguments = succ;
         new_job->number_of_programs++;
         success = (struct program*)realloc(new_job->programs, new_job->number_of_programs * sizeof(struct program));
         if (success == NULL || new_program.arguments == NULL)
@@ -605,12 +616,18 @@ int try_built_in(struct job* new_job)
     return 0;
 }
 
+void free_lakes(int** lakes, int n)
+{
+   int i;
+   for (i = 0; i < n; i++)
+       free(lakes[i]);
+   free(lakes);
+}
+
 void run_job_foreground(struct job* new_job)
 {
-    int i, pid, j;
+    int i, pid, j, group_number;
     int** lakes;
-    char** success;
-    int new_quan;
     if (try_built_in(new_job) != 0)
         return;
     lakes = (int**)malloc((new_job->number_of_programs - 1) * sizeof(int*));
@@ -618,15 +635,17 @@ void run_job_foreground(struct job* new_job)
     {
         lakes[i] = (int*)malloc(2 * sizeof(int));
         pipe(lakes[i]);
-        if (new_job->programs[i].output_file != NULL || new_job->programs[i + 1].input_file != NULL)
-        {
-            close(lakes[i][0]);
-            close(lakes[i][1]);
-        }
     }
     for (i = 0; i < new_job->number_of_programs; i++)
     {
             pid = fork();
+            if (i == 0 && pid != 0)
+            {
+                group_number = pid;
+                tcsetpgrp(0, group_number);
+            }
+            if (pid != 0)
+                setpgid(pid, group_number);
             if (pid == 0)
             {
                 for (j = 0; j < new_job->number_of_programs - 1; j++)
@@ -641,10 +660,15 @@ void run_job_foreground(struct job* new_job)
                     int input = open(new_job->programs[i].input_file, O_RDONLY);
                     dup2(input, 0);
                     close(input);
+                    if (i > 0)
+                        close(lakes[i - 1][0]);
                 } 
                 else if (i > 0)
                 {
-                    dup2(lakes[i - 1][0], 0);
+                    if (new_job->programs[i - 1].output_file == NULL)
+                        dup2(lakes[i - 1][0], 0);
+                    else
+                        close(0);
                     close(lakes[i - 1][0]);
                 }
                 if (new_job->programs[i].output_file != NULL)
@@ -656,23 +680,20 @@ void run_job_foreground(struct job* new_job)
                     output = open(new_job->programs[i].output_file, flags, 0666);
                     dup2(output, 1);
                     close(output);
+                    if (i < new_job->number_of_programs - 1)
+                        close(lakes[i][1]);
                 }
                 else if (i < new_job->number_of_programs - 1)
                 {
-                    dup2(lakes[i][1], 1);
+                    if (new_job->programs[i + 1].input_file == NULL)
+                        dup2(lakes[i][1], 1);
+                    else
+                        close(1);
                     close(lakes[i][1]);
                 }
-                new_quan = new_job->programs[i].number_of_arguments + 1;
-                success = (char**)realloc(new_job->programs[i].arguments, new_quan * sizeof(char*));
-                if (success == NULL)
-                {
-                    fprintf(stderr, "Execution problem");
-                    exit(1);
-                }
-                new_job->programs[i].arguments = success;
-                new_job->programs[i].arguments[new_quan - 1] = NULL;
+                free_lakes(lakes, new_job->number_of_programs - 1);
                 execvp(new_job->programs[i].name, new_job->programs[i].arguments);
-                fprintf(stderr, "Execution problem");
+                fprintf(stderr, "Execution problem\n");
                 exit(1);
             }
     }
@@ -681,8 +702,10 @@ void run_job_foreground(struct job* new_job)
         close(lakes[i][0]);
         close(lakes[i][1]);
     }
+    free_lakes(lakes, new_job-> number_of_programs - 1);
     for (i = 0; i < new_job->number_of_programs; i++)
         wait(NULL);
+    tcsetpgrp(0, getpgid(getpid()));
 }
 
 void run_job_background(struct job* new_job)
@@ -705,6 +728,7 @@ void run_jobs(int n, struct job* jobs)
 int main(int argc, char** argv)
 {
     char *s;
+    signal(SIGTTOU, SIG_IGN);
     printf("msh$ ");
     while (safe_gets(stdin, &s) != EOF)
     {
