@@ -23,6 +23,19 @@
 #define COMMAND_END 201
 #define EMPTY_JOB 202
 
+int number_of_variables = 0;
+
+struct variable
+{
+    char* name;
+    char* value;
+};
+
+struct variable* variables = NULL;
+char** exported_variables = NULL;
+int number_of_exported_variables = 0;
+int last_pid = 0;
+
 struct program
 {
     char* name;
@@ -41,8 +54,12 @@ struct job
 
 char *strdup(const char *s);
 pid_t getpgid(pid_t pid);
-
 int safe_gets(FILE*, char**);
+ssize_t readlink(const char *path, char *buf, size_t bufsiz);
+int gethostname(char *name, size_t len);
+char *get_current_dir_name(void);
+int setenv(const char *name, const char *value, int overwrite);
+int putenv(char *string);
 
 int divider(char a)
 {
@@ -52,12 +69,37 @@ int divider(char a)
 
 char* decode_macros(char** macros, int* macros_len)
 {
-    char* result = getenv(*macros);
+    int i;
+    char* result;
+    if (strcmp(*macros, "?") == 0)
+    {
+        free(*macros);
+        result = (char*)malloc(9 * sizeof(char));
+        if (result == NULL)
+        {
+            *macros_len = 0;
+            return NULL;
+        }
+        sprintf(result, "%d", last_pid);
+        *macros_len = strlen(result);
+        return result;
+    }
+    for (i = 0; i < number_of_variables; i++)
+        if (strcmp(variables[i].name, *macros) == 0)
+        {
+            free(*macros);
+            *macros_len = strlen(variables[i].value);
+            return strdup(variables[i].value);
+        }
+    result = getenv(*macros);
     free(*macros);
     if (result == NULL)
+    {
+        *macros_len = 0;
         return NULL;
+    }
     *macros_len = strlen(result);
-    return result;
+    return strdup(result);
 }
 
 void add_to_result(char** result, int* len, char** string, int* error)
@@ -81,6 +123,7 @@ void add_to_result(char** result, int* len, char** string, int* error)
 
 void get_macroname(char** result, int* len, char** string, int* error)
 {
+    char* back_macros;
     char* macros = NULL;
     int macros_len, i;
     char strend = '\0';
@@ -103,11 +146,12 @@ void get_macroname(char** result, int* len, char** string, int* error)
     if (macros == NULL)
         return;
     add_to_result(&macros, &macros_len, &strend_ptr, error);
-    macros = decode_macros(&macros, &macros_len);
+    back_macros = macros = decode_macros(&macros, &macros_len);
     if (macros == NULL)
         return;
     for (i = 0; i < macros_len; i++)
         add_to_result(result, len, &macros, error);
+    free(back_macros);
 }
 
 int get_lexeme(char** begin, char** string, char** result)
@@ -560,29 +604,21 @@ void clear_information(struct job* jobs, int n)
     free(jobs);
 }
 
-void mcd()
+void mcd(int argc, char** argv)
 {
-
-}
-
-void mpwd()
-{
-
-}
-
-void fg()
-{
-    
-}
-
-void bg()
-{
-    
-}
-
-void jobs()
-{
-    
+    int success;
+    if (argc == 1)
+        success = chdir(getenv("HOME"));
+    else
+        success = chdir(argv[1]);
+    if (success == -1)
+        fprintf(stderr, "Unable to change directory\n");
+    else
+    {
+        char* new_path = get_current_dir_name();
+        setenv("PWD", new_path, 1);
+        free(new_path);
+    }
 }
 
 void mexit()
@@ -590,9 +626,29 @@ void mexit()
     exit(0);
 }
 
-void export()
+char* add_exp_variable(char* word)
 {
-    
+    char** success = (char**)realloc(exported_variables, (++number_of_exported_variables)*sizeof(char*));
+    if (success == NULL)
+    {
+        fprintf(stderr, "Not enought memory");
+        exit(1);
+    }
+    success[number_of_exported_variables - 1] = strdup(word);
+    exported_variables = success;
+    return success[number_of_exported_variables - 1];
+}
+
+void export(int argc, char** argv)
+{
+   int i;
+   for (i = 0; i < argc; i++)
+       putenv(add_exp_variable(argv[i]));
+}
+
+void mpwd()
+{
+    printf("%s\n", getenv("PWD"));
 }
 
 int try_built_in(struct job* new_job)
@@ -600,19 +656,22 @@ int try_built_in(struct job* new_job)
     if (new_job->number_of_programs != 1)
         return 0;
     if (strcmp(new_job->programs[0].name, "cd") == 0)
-        mcd();
+    {
+        mcd(new_job->programs[0].number_of_arguments, new_job->programs[0].arguments);
+        return 1;
+    }
     if (strcmp(new_job->programs[0].name, "pwd") == 0)
+    {
         mpwd();
-    if (strcmp(new_job->programs[0].name, "jobs") == 0)
-        jobs();
-    if (strcmp(new_job->programs[0].name, "fg") == 0)
-        fg();
-    if (strcmp(new_job->programs[0].name, "bg") == 0)
-        bg();
+        return 1;
+    }
     if (strcmp(new_job->programs[0].name, "exit") == 0)
         mexit();
     if (strcmp(new_job->programs[0].name, "export") == 0)
-        export();
+    {
+        export(new_job->programs[0].number_of_arguments, new_job->programs[0].arguments);
+        return 1;
+    }
     return 0;
 }
 
@@ -626,7 +685,7 @@ void free_lakes(int** lakes, int n)
 
 void run_job_foreground(struct job* new_job)
 {
-    int i, pid, j, group_number;
+    int i, pid, j, group_number, status;
     int** lakes;
     if (try_built_in(new_job) != 0)
         return;
@@ -704,7 +763,11 @@ void run_job_foreground(struct job* new_job)
     }
     free_lakes(lakes, new_job-> number_of_programs - 1);
     for (i = 0; i < new_job->number_of_programs; i++)
-        wait(NULL);
+    {
+        wait(&status);
+        if (WIFEXITED(status))
+            last_pid = WEXITSTATUS(status);
+    }
     tcsetpgrp(0, getpgid(getpid()));
 }
 
@@ -725,10 +788,88 @@ void run_jobs(int n, struct job* jobs)
     }
 }
 
+void free_variables()
+{
+    int i;
+    for (i = 0; i < number_of_variables; i++)
+    {
+        free(variables[i].name);
+        free(variables[i].value);
+    }
+    free(variables);
+}
+
+void add_variable(char* name, char* value)
+{
+    struct variable* success;
+    success = (struct variable*)realloc(variables, (++number_of_variables)*sizeof(struct variable));
+    if (success == NULL)
+    {
+        fprintf(stderr, "Not enough memory\n");
+        free_variables();
+        exit(1);
+    }
+    success[number_of_variables - 1].name = name;
+    success[number_of_variables - 1].value = value;
+    variables = success;
+}
+
+void checknull(char* buf)
+{
+    if (buf == NULL)
+    {
+        fprintf(stderr, "Not enough memory\n");
+        exit(1);
+    }
+}
+
+void init_variables(int argc, char** argv)
+{
+    int i, k;
+    char* buf = (char*)malloc(9 * sizeof(char));
+    checknull(buf);
+    sprintf(buf, "%d", argc);
+    add_variable(strdup("#"), buf);
+
+    for (i = 0; i < argc; i++)
+    {
+        buf = (char*)malloc(9 * sizeof(char));
+        checknull(buf);
+        sprintf(buf, "%d", i);
+        add_variable(buf, strdup(argv[i]));
+    }
+
+    buf = (char*)malloc(100 * sizeof(char));
+    checknull(buf);
+    if ((k = readlink("/proc/self/exe", buf, 100 * sizeof(char))) == -1)
+    {
+        fprintf(stderr, "Too long path to execution file");
+        exit(1);
+    }
+    buf[k] = '\0';
+    add_variable("SHELL", buf);
+
+    buf = (char*)malloc(9 * sizeof(char));
+    checknull(buf);
+    sprintf(buf, "%d", getpid());
+    add_variable("PID", buf);
+
+    buf = (char*)malloc(9 * sizeof(char));
+    checknull(buf);
+    sprintf(buf, "%d", getuid());
+    add_variable("UID", buf);
+
+    buf = (char*)malloc(50 * sizeof(char));
+    checknull(buf);
+    gethostname(buf, 50 * sizeof(char));
+    add_variable("HOSTNAME", buf);
+}
+
 int main(int argc, char** argv)
 {
     char *s;
     signal(SIGTTOU, SIG_IGN);
+    init_variables(argc, argv);
     printf("msh$ ");
     while (safe_gets(stdin, &s) != EOF)
     {
@@ -742,5 +883,6 @@ int main(int argc, char** argv)
         clear_information(jobs, n);
         printf("msh$ ");
     }
+    free_variables();
     return 0;
 }
