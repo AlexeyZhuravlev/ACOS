@@ -138,7 +138,8 @@ void get_macroname(char** result, int* len, char** string, int* error)
             add_to_result(&macros, &macros_len, string, error);
         if (**string == '}')
             (*string)++;
-    } else
+    }
+    else
     {
         while (isalpha(**string) || isdigit(**string) || **string == '_')
             add_to_result(&macros, &macros_len, string, error);
@@ -203,7 +204,7 @@ int get_lexeme(char** begin, char** string, char** result)
         if (**string == '\\')
         {
             (*string)++;
-            if (**string == '\0') 
+            if (**string == '\0')
             {
                 free(*begin);
                 printf("> ");
@@ -211,7 +212,7 @@ int get_lexeme(char** begin, char** string, char** result)
                 (*string) = (*begin);
             }
             else
-            add_to_result(result, &result_len, string, &error);
+                add_to_result(result, &result_len, string, &error);
         }
         else if (**string == '\'')
         {
@@ -231,8 +232,9 @@ int get_lexeme(char** begin, char** string, char** result)
                         return ERROR;
                     }
                     (*string) = *begin;
-                } else
-                add_to_result(result, &result_len, string, &error);
+                }
+                else
+                    add_to_result(result, &result_len, string, &error);
             }
             (*string)++;
         }
@@ -254,7 +256,8 @@ int get_lexeme(char** begin, char** string, char** result)
                         return ERROR;
                     }
                     (*string) = *begin;
-                } else if (**string == '\\')
+                }
+                else if (**string == '\\')
                 {
                     (*string)++;
                     if (**string == '\0')
@@ -268,15 +271,16 @@ int get_lexeme(char** begin, char** string, char** result)
                             return ERROR;
                         }
                         (*string) = *begin;
-                    } else
-                    add_to_result(result, &result_len, string, &error);
+                    }
+                    else
+                        add_to_result(result, &result_len, string, &error);
                 }
                 else if (**string == '$')
                 {
                     (*string)++;
                     get_macroname(result, &result_len, string, &error);
                 }
-                else 
+                else
                     add_to_result(result, &result_len, string, &error);
             }
             (*string)++;
@@ -525,8 +529,8 @@ int safe_gets(FILE *f, char** string)
                     new_symbol = '\0';
             }
         }
-              if (new_symbol == '\n')
-                   new_symbol = '\0'; 
+        if (new_symbol == '\n')
+            new_symbol = '\0';
 
         length++;
         if (length > capacity)
@@ -641,9 +645,9 @@ char* add_exp_variable(char* word)
 
 void export(int argc, char** argv)
 {
-   int i;
-   for (i = 0; i < argc; i++)
-       putenv(add_exp_variable(argv[i]));
+    int i;
+    for (i = 0; i < argc; i++)
+        putenv(add_exp_variable(argv[i]));
 }
 
 void mpwd()
@@ -677,10 +681,10 @@ int try_built_in(struct job* new_job)
 
 void free_lakes(int** lakes, int n)
 {
-   int i;
-   for (i = 0; i < n; i++)
-       free(lakes[i]);
-   free(lakes);
+    int i;
+    for (i = 0; i < n; i++)
+        free(lakes[i]);
+    free(lakes);
 }
 
 void run_job_foreground(struct job* new_job)
@@ -697,64 +701,70 @@ void run_job_foreground(struct job* new_job)
     }
     for (i = 0; i < new_job->number_of_programs; i++)
     {
-            pid = fork();
-            if (i == 0 && pid != 0)
+        pid = fork();
+        if (i == 0 && pid != 0)
+        {
+            group_number = pid;
+            tcsetpgrp(0, group_number);
+        }
+        if (pid == -1)
+        {
+            free_lakes(lakes, new_job-> number_of_programs - 1);
+            fprintf(stderr, "Error running foreground job\n");
+            exit(1);
+        }
+        if (pid != 0)
+            setpgid(pid, group_number);
+        if (pid == 0)
+        {
+            for (j = 0; j < new_job->number_of_programs - 1; j++)
             {
-                group_number = pid;
-                tcsetpgrp(0, group_number);
+                if (j != i - 1)
+                    close(lakes[j][0]);
+                if (j != i)
+                    close(lakes[j][1]);
             }
-            if (pid != 0)
-                setpgid(pid, group_number);
-            if (pid == 0)
+            if (new_job->programs[i].input_file != NULL)
             {
-                for (j = 0; j < new_job->number_of_programs - 1; j++)
-                {
-                    if (j != i - 1) 
-                        close(lakes[j][0]);
-                    if (j != i)
-                        close(lakes[j][1]);
-                }
-                if (new_job->programs[i].input_file != NULL)
-                {
-                    int input = open(new_job->programs[i].input_file, O_RDONLY);
-                    dup2(input, 0);
-                    close(input);
-                    if (i > 0)
-                        close(lakes[i - 1][0]);
-                } 
-                else if (i > 0)
-                {
-                    if (new_job->programs[i - 1].output_file == NULL)
-                        dup2(lakes[i - 1][0], 0);
-                    else
-                        close(0);
+                int input = open(new_job->programs[i].input_file, O_RDONLY);
+                dup2(input, 0);
+                close(input);
+                if (i > 0)
                     close(lakes[i - 1][0]);
-                }
-                if (new_job->programs[i].output_file != NULL)
-                {
-                    int output;
-                    int flags = O_WRONLY | O_CREAT;
-                    if (new_job->programs[i].output_type == 2)
-                        flags = flags | O_APPEND;
-                    output = open(new_job->programs[i].output_file, flags, 0666);
-                    dup2(output, 1);
-                    close(output);
-                    if (i < new_job->number_of_programs - 1)
-                        close(lakes[i][1]);
-                }
-                else if (i < new_job->number_of_programs - 1)
-                {
-                    if (new_job->programs[i + 1].input_file == NULL)
-                        dup2(lakes[i][1], 1);
-                    else
-                        close(1);
-                    close(lakes[i][1]);
-                }
-                free_lakes(lakes, new_job->number_of_programs - 1);
-                execvp(new_job->programs[i].name, new_job->programs[i].arguments);
-                fprintf(stderr, "Execution problem\n");
-                exit(1);
             }
+            else if (i > 0)
+            {
+                if (new_job->programs[i - 1].output_file == NULL)
+                    dup2(lakes[i - 1][0], 0);
+                else
+                    close(0);
+                close(lakes[i - 1][0]);
+            }
+            if (new_job->programs[i].output_file != NULL)
+            {
+                int output;
+                int flags = O_WRONLY | O_CREAT;
+                if (new_job->programs[i].output_type == 2)
+                    flags = flags | O_APPEND;
+                output = open(new_job->programs[i].output_file, flags, 0666);
+                dup2(output, 1);
+                close(output);
+                if (i < new_job->number_of_programs - 1)
+                    close(lakes[i][1]);
+            }
+            else if (i < new_job->number_of_programs - 1)
+            {
+                if (new_job->programs[i + 1].input_file == NULL)
+                    dup2(lakes[i][1], 1);
+                else
+                    close(1);
+                close(lakes[i][1]);
+            }
+            free_lakes(lakes, new_job->number_of_programs - 1);
+            execvp(new_job->programs[i].name, new_job->programs[i].arguments);
+            fprintf(stderr, "Execution problem\n");
+            exit(1);
+        }
     }
     for (i = 0; i < new_job->number_of_programs - 1; i++)
     {
