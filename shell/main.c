@@ -702,16 +702,16 @@ void run_job_foreground(struct job* new_job)
     for (i = 0; i < new_job->number_of_programs; i++)
     {
         pid = fork();
-        if (i == 0 && pid != 0)
-        {
-            group_number = pid;
-            tcsetpgrp(0, group_number);
-        }
         if (pid == -1)
         {
             free_lakes(lakes, new_job-> number_of_programs - 1);
             fprintf(stderr, "Error running foreground job\n");
             exit(1);
+        }
+        if (i == 0 && pid != 0)
+        {
+            group_number = pid;
+            tcsetpgrp(0, group_number);
         }
         if (pid != 0)
             setpgid(pid, group_number);
