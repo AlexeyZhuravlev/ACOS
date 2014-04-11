@@ -35,6 +35,7 @@ char** exported_variables = NULL;
 int number_of_exported_variables = 0;
 int number_of_variables = 0;
 int last_pid = 0;
+int exitflag = 0;
 
 struct program
 {
@@ -627,7 +628,7 @@ void mcd(int argc, char** argv)
 
 void mexit()
 {
-    exit(0);
+    exitflag = 1;
 }
 
 void free_exported_variables()
@@ -682,7 +683,10 @@ int try_built_in(struct job* new_job)
         return 1;
     }
     if (strcmp(new_job->programs[0].name, "exit") == 0)
+    {
         mexit();
+        return 1;
+    }
     if (strcmp(new_job->programs[0].name, "export") == 0)
     {
         export(new_job->programs[0].number_of_arguments, new_job->programs[0].arguments);
@@ -914,7 +918,10 @@ int main(int argc, char** argv)
         if (res == 0)
             run_jobs(n, jobs);
         clear_information(jobs, n);
-        printf("msh$ ");
+        if (exitflag == 0)
+            printf("msh$ ");
+        else 
+            break;
     }
     free_variables();
     free_exported_variables();
