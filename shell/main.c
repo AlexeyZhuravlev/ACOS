@@ -727,8 +727,14 @@ void run_job_foreground(struct job* new_job)
             if (new_job->programs[i].input_file != NULL)
             {
                 int input = open(new_job->programs[i].input_file, O_RDONLY);
-                dup2(input, 0);
-                close(input);
+                if (input != -1)
+                {
+                    dup2(input, 0);
+                    close(input);
+                } else {
+                    fprintf(stderr, "unable to open input file\n");
+                    exit(1);
+                }
                 if (i > 0)
                     close(lakes[i - 1][0]);
             }
@@ -798,17 +804,6 @@ void run_jobs(int n, struct job* jobs)
     }
 }
 
-void free_variables()
-{
-    int i;
-    for (i = 0; i < number_of_variables; i++)
-    {
-        free(variables[i].name);
-        free(variables[i].value);
-    }
-    free(variables);
-}
-
 void add_variable(char* name, char* value)
 {
     struct variable* success;
@@ -816,7 +811,6 @@ void add_variable(char* name, char* value)
     if (success == NULL)
     {
         fprintf(stderr, "Not enough memory\n");
-        free_variables();
         exit(1);
     }
     success[number_of_variables - 1].name = name;
@@ -893,6 +887,5 @@ int main(int argc, char** argv)
         clear_information(jobs, n);
         printf("msh$ ");
     }
-    free_variables();
     return 0;
 }
