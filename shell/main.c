@@ -23,7 +23,6 @@
 #define COMMAND_END 201
 #define EMPTY_JOB 202
 
-int number_of_variables = 0;
 
 struct variable
 {
@@ -34,6 +33,7 @@ struct variable
 struct variable* variables = NULL;
 char** exported_variables = NULL;
 int number_of_exported_variables = 0;
+int number_of_variables = 0;
 int last_pid = 0;
 
 struct program
@@ -630,12 +630,24 @@ void mexit()
     exit(0);
 }
 
+void free_exported_variables()
+{
+    int i;
+    if (number_of_exported_variables == 0)
+        return;
+    for (i = 0; i < number_of_exported_variables; i++)
+        free(exported_variables[i]);
+    free(exported_variables);
+}
+
 char* add_exp_variable(char* word)
 {
     char** success = (char**)realloc(exported_variables, (++number_of_exported_variables)*sizeof(char*));
     if (success == NULL)
     {
         fprintf(stderr, "Not enought memory");
+        number_of_exported_variables--;
+        free_exported_variables();
         exit(1);
     }
     success[number_of_exported_variables - 1] = strdup(word);
@@ -804,6 +816,8 @@ void run_jobs(int n, struct job* jobs)
     }
 }
 
+void free_variables();
+
 void add_variable(char* name, char* value)
 {
     struct variable* success;
@@ -811,6 +825,8 @@ void add_variable(char* name, char* value)
     if (success == NULL)
     {
         fprintf(stderr, "Not enough memory\n");
+        number_of_variables--;
+        free_variables();
         exit(1);
     }
     success[number_of_variables - 1].name = name;
@@ -851,22 +867,35 @@ void init_variables(int argc, char** argv)
         exit(1);
     }
     buf[k] = '\0';
-    add_variable("SHELL", buf);
+    add_variable(strdup("SHELL"), buf);
 
     buf = (char*)malloc(9 * sizeof(char));
     checknull(buf);
     sprintf(buf, "%d", getpid());
-    add_variable("PID", buf);
+    add_variable(strdup("PID"), buf);
 
     buf = (char*)malloc(9 * sizeof(char));
     checknull(buf);
     sprintf(buf, "%d", getuid());
-    add_variable("UID", buf);
+    add_variable(strdup("UID"), buf);
 
     buf = (char*)malloc(50 * sizeof(char));
     checknull(buf);
     gethostname(buf, 50 * sizeof(char));
-    add_variable("HOSTNAME", buf);
+    add_variable(strdup("HOSTNAME"), buf);
+}
+
+void free_variables()
+{
+    int i;
+    if (number_of_variables == 0)
+        return;
+    for (i = 0; i < number_of_variables; i++)
+    {
+        free(variables[i].name);
+        free(variables[i].value);
+    }
+    free(variables);
 }
 
 int main(int argc, char** argv)
@@ -887,5 +916,7 @@ int main(int argc, char** argv)
         clear_information(jobs, n);
         printf("msh$ ");
     }
+    free_variables();
+    free_exported_variables();
     return 0;
 }
