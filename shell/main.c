@@ -23,6 +23,12 @@
 #define COMMAND_END 201
 #define EMPTY_JOB 202
 
+#define RUN_ERROR 301
+#define BUILT_IN 302
+
+#define RUNNING 1001
+#define SUSPENDED 1002
+#define FINISHED 1003
 
 struct variable
 {
@@ -53,6 +59,24 @@ struct job
     int number_of_programs;
 };
 
+struct process
+{
+    int pid;
+    int status; /* 1001 - running, 1002 - suspended, 1003 - finished */
+};
+
+struct active_job
+{
+    struct process* processes;
+    int number_of_processes;
+    int status; /* 1001 - running, 1002 - suspended, 1003 - finished */
+    char* job_name;
+    int group;
+};
+
+struct active_job* current_jobs = NULL;
+int number_of_jobs = 0;
+
 char *strdup(const char *s);
 pid_t getpgid(pid_t pid);
 int safe_gets(FILE*, char**);
@@ -61,6 +85,7 @@ int gethostname(char *name, size_t len);
 char *get_current_dir_name(void);
 int setenv(const char *name, const char *value, int overwrite);
 int putenv(char *string);
+int kill(pid_t pid, int sig);
 
 int divider(char a)
 {
@@ -666,6 +691,107 @@ void export(int argc, char** argv)
 void mpwd()
 {
     printf("%s\n", getenv("PWD"));
+    exit(0);
+}
+
+void jobs()
+{
+    int i;
+    for (i = 0; i < number_of_jobs; i++)
+        if (current_jobs[i].status != FINISHED)
+        {
+            printf("[%d] %s ", i, current_jobs[i].job_name);
+            if (current_jobs[i].status == SUSPENDED)
+                printf("suspended\n");
+            else
+                printf("running\n");
+        }
+    exit(0);
+}
+
+int get_first_not_finished()
+{
+    int i;
+    int n = -1;
+    for (i = 0; i < number_of_jobs; i++)
+        if (current_jobs[i].status != FINISHED)
+        {
+            n = i;
+            break;
+        }
+    return n;
+}
+
+void wake_job(int n)
+{
+    int i;
+    for (i = 0; i < current_jobs[n].number_of_processes; i++)
+        if (current_jobs[n].processes[i].status == SUSPENDED)
+        {
+            kill(current_jobs[n].processes[i].pid, SIGCONT);
+            current_jobs[n].processes[i].status = RUNNING;
+        }
+    current_jobs[n].status = RUNNING;
+    printf(" Job %s has continued\n", current_jobs[n].job_name);
+}
+
+void fg(int argc, char** argv)
+{
+   int n;
+   if (argc == 1)
+       n = get_first_not_finished();
+   else
+       n = atoi(argv[1]);
+   if (n == -1)
+       return;
+   if (n >= number_of_jobs || current_jobs[n].status == FINISHED)
+       fprintf(stderr, "No active job with number %d\n", n);
+   else 
+   {
+       int i, status, has_stop = 0;
+       tcsetpgrp(0, current_jobs[n].group);
+       if (current_jobs[n].status == SUSPENDED)
+           wake_job(n);
+       for (i = 0; i < current_jobs[n].number_of_processes; i++)
+       {
+           waitpid(current_jobs[n].processes[i].pid, &status, WUNTRACED);
+           if (WIFSTOPPED(status))
+           {
+               current_jobs[n].processes[i].status = SUSPENDED;
+               has_stop = 1;
+           }
+           else
+               current_jobs[n].processes[i].status = FINISHED;
+       }
+       if (has_stop)
+       {
+           printf(" Job %s has been suspended\n", current_jobs[n].job_name);
+           current_jobs[n].status = SUSPENDED;
+       }
+       else
+           current_jobs[n].status = FINISHED;
+       tcsetpgrp(0, getpgid(getpid()));
+   }
+}
+
+void bg(int argc, char** argv)
+{
+   int n;
+   if (argc == 1)
+       n = get_first_not_finished();
+   else
+       n = atoi(argv[1]);
+   if (n == -1)
+       return;
+   if (n >= number_of_jobs || current_jobs[n].status != SUSPENDED)
+   {
+       if (n >= number_of_jobs || current_jobs[n].status == FINISHED)
+           fprintf(stderr, "No active job with number %d\n", n);
+       else if (current_jobs[n].status == RUNNING)
+           fprintf(stderr, "Job number %d is already running", n);
+   }
+   else
+       wake_job(n);
 }
 
 int try_built_in(struct job* new_job)
@@ -675,11 +801,6 @@ int try_built_in(struct job* new_job)
     if (strcmp(new_job->programs[0].name, "cd") == 0)
     {
         mcd(new_job->programs[0].number_of_arguments, new_job->programs[0].arguments);
-        return 1;
-    }
-    if (strcmp(new_job->programs[0].name, "pwd") == 0)
-    {
-        mpwd();
         return 1;
     }
     if (strcmp(new_job->programs[0].name, "exit") == 0)
@@ -692,7 +813,25 @@ int try_built_in(struct job* new_job)
         export(new_job->programs[0].number_of_arguments, new_job->programs[0].arguments);
         return 1;
     }
+    if (strcmp(new_job->programs[0].name, "fg") == 0)
+    {
+        fg(new_job->programs[0].number_of_arguments, new_job->programs[0].arguments);
+        return 1;
+    }
+    if (strcmp(new_job->programs[0].name, "bg") == 0)
+    {
+        bg(new_job->programs[0].number_of_arguments, new_job->programs[0].arguments);
+        return 1;
+    }
     return 0;
+}
+
+void try_built_in_conv(struct program* new_program)
+{
+    if (strcmp(new_program->name, "pwd") == 0)
+        mpwd();
+    if (strcmp(new_program->name, "jobs") == 0)
+        jobs();
 }
 
 void free_lakes(int** lakes, int n)
@@ -703,12 +842,14 @@ void free_lakes(int** lakes, int n)
     free(lakes);
 }
 
-void run_job_foreground(struct job* new_job)
+int run_job(struct job* new_job, struct active_job* possible_job)
 {
-    int i, pid, j, group_number, status;
+    int i, pid, j, group_number;
     int** lakes;
     if (try_built_in(new_job) != 0)
-        return;
+        return BUILT_IN;
+    possible_job->number_of_processes = new_job->number_of_programs;
+    possible_job->processes = (struct process*)malloc((new_job->number_of_programs)*sizeof(struct process));
     lakes = (int**)malloc((new_job->number_of_programs - 1) * sizeof(int*));
     for (i = 0; i < new_job->number_of_programs - 1; i++)
     {
@@ -718,17 +859,19 @@ void run_job_foreground(struct job* new_job)
     for (i = 0; i < new_job->number_of_programs; i++)
     {
         pid = fork();
+        if (pid !=0)
+        {
+            possible_job->processes[i].pid = pid;
+            possible_job->processes[i].status = RUNNING;
+        }
         if (pid == -1)
         {
             free_lakes(lakes, new_job-> number_of_programs - 1);
-            fprintf(stderr, "Error running foreground job\n");
-            exit(1);
+            fprintf(stderr, "Execution problem\n");
+            return RUN_ERROR;
         }
         if (i == 0 && pid != 0)
-        {
             group_number = pid;
-            tcsetpgrp(0, group_number);
-        }
         if (pid != 0)
             setpgid(pid, group_number);
         if (pid == 0)
@@ -783,8 +926,9 @@ void run_job_foreground(struct job* new_job)
                 close(lakes[i][1]);
             }
             free_lakes(lakes, new_job->number_of_programs - 1);
+            try_built_in_conv(&new_job->programs[i]);
             execvp(new_job->programs[i].name, new_job->programs[i].arguments);
-            fprintf(stderr, "Execution problem\n");
+            fprintf(stderr, "Problem with execution %s\n", new_job->programs[i].name);
             exit(1);
         }
     }
@@ -793,19 +937,126 @@ void run_job_foreground(struct job* new_job)
         close(lakes[i][0]);
         close(lakes[i][1]);
     }
-    free_lakes(lakes, new_job-> number_of_programs - 1);
+    free_lakes(lakes, new_job->number_of_programs - 1);
+    possible_job->group = group_number;
+    return 0;
+}
+
+char* form_job_name(struct job* new_job)
+{
+    int i, j, len = 1;
+    char* result = NULL;
     for (i = 0; i < new_job->number_of_programs; i++)
     {
-        wait(&status);
-        if (WIFEXITED(status))
-            last_pid = WEXITSTATUS(status);
+        for (j = 0; j < new_job->programs[i].number_of_arguments; j++)
+            len += strlen(new_job->programs[i].arguments[j]) + 1;
+        if (new_job->programs[i].input_file != NULL)
+            len += strlen(new_job->programs[i].input_file) + 3;
+        if (new_job->programs[i].output_file != NULL)
+            len += strlen(new_job->programs[i].output_file) + 4;
+        len += 2;
     }
-    tcsetpgrp(0, getpgid(getpid()));
+    result = (char*)malloc(len * sizeof(char));
+    if (result == NULL)
+    {
+        fprintf(stderr, "Memory allocation error");
+        return NULL;
+    }
+    result[0] = '\0';
+    for (i = 0; i < new_job->number_of_programs; i++)
+    {
+        for (j = 0; j < new_job->programs[i].number_of_arguments; j++)
+        {
+            strcat(result, new_job->programs[i].arguments[j]);
+            strcat(result, " ");
+        }
+        if (new_job->programs[i].input_file != NULL)
+        {
+            strcat(result, "< ");
+            strcat(result, new_job->programs[i].input_file);
+            strcat(result, " ");
+        }
+        if (new_job->programs[i].output_file != NULL)
+        {
+            if (new_job->programs[i].output_type == 1)
+                strcat(result, "> ");
+            else 
+                strcat(result, ">> ");
+            strcat(result, new_job->programs[i].output_file);
+            strcat(result, " ");
+        }
+        if (i < new_job->number_of_programs - 1)
+            strcat(result, "| ");
+    }
+    return result;
+}
+
+int add_active_job(struct active_job new_job)
+{
+    struct active_job* success;
+    number_of_jobs++;
+    success = (struct active_job*)realloc(current_jobs, number_of_jobs * sizeof(struct active_job));
+    if (success == NULL)
+        return ERROR;
+    current_jobs = success;
+    current_jobs[number_of_jobs - 1] = new_job;
+    return 0;
+}
+
+void run_job_foreground(struct job* new_job)
+{
+    struct active_job possible_job;
+    if (run_job(new_job, &possible_job) == 0)
+    {
+        int i, status, flag = 0;
+        tcsetpgrp(0, possible_job.group);
+        possible_job.job_name = form_job_name(new_job);
+        for (i = 0; i < possible_job.number_of_processes; i++)
+        {
+            waitpid(possible_job.processes[i].pid, &status, WUNTRACED);
+            if (WIFSTOPPED(status))
+            {
+                possible_job.processes[i].status = SUSPENDED;
+                flag = 1;
+            }
+            last_pid = WEXITSTATUS(status);
+        }
+        if (flag)
+        {
+            possible_job.status = SUSPENDED;
+            if (add_active_job(possible_job) == ERROR)
+            {
+                fprintf(stderr, "Allocation memory error\n");
+                free(possible_job.processes);
+                free(possible_job.job_name);
+                return;
+            }
+            printf(" Job %s has been suspended\n", possible_job.job_name);
+        }
+        else 
+        {
+            free(possible_job.processes);
+            free(possible_job.job_name);
+        }
+        tcsetpgrp(0, getpgid(getpid()));
+    }
 }
 
 void run_job_background(struct job* new_job)
 {
-    fprintf(stderr, "Background jobs not supported yet\n");
+    struct active_job possible_job;
+    if (run_job(new_job, &possible_job) == 0)
+    {
+        possible_job.job_name = form_job_name(new_job);
+        possible_job.status = RUNNING;
+        if (add_active_job(possible_job) == ERROR)
+        {
+            fprintf(stderr, "Allocation memory error\n");
+            free(possible_job.processes);
+            free(possible_job.job_name);
+        }
+        printf(" Job %s is running\n", possible_job.job_name);
+    }
 }
 
 void run_jobs(int n, struct job* jobs)
@@ -867,7 +1118,7 @@ void init_variables(int argc, char** argv)
     checknull(buf);
     if ((k = readlink("/proc/self/exe", buf, 100 * sizeof(char))) == -1)
     {
-        fprintf(stderr, "Too long path to execution file");
+        fprintf(stderr, "Too long path to execution file\n");
         exit(1);
     }
     buf[k] = '\0';
@@ -902,6 +1153,59 @@ void free_variables()
     free(variables);
 }
 
+void free_active_jobs()
+{
+    int i;
+    for (i = 0; i < number_of_jobs; i++)
+    {
+        free(current_jobs[i].job_name);
+        free(current_jobs[i].processes);
+    }
+    free(current_jobs);
+}
+
+void check_finished_processes()
+{
+    int i, j, status, has_run = 0, has_susp = 0;
+    for (i = 0; i < number_of_jobs; i++)
+    if (current_jobs[i].status == RUNNING)
+    {
+        for (j = 0; j < current_jobs[i].number_of_processes; j++)
+            if (current_jobs[i].processes[j].status == RUNNING)
+            {
+                if (waitpid(current_jobs[i].processes[j].pid, &status, WUNTRACED | WNOHANG) 
+                    == current_jobs[i].processes[j].pid)
+                {
+                    last_pid = WEXITSTATUS(status);
+                    if (WIFSTOPPED(status))
+                        current_jobs[i].processes[j].status = SUSPENDED;
+                    else
+                        current_jobs[i].processes[j].status = FINISHED;
+                }
+            }
+       for (j = 0; j < current_jobs[i].number_of_processes; j++)
+       {
+           if (current_jobs[i].processes[j].status == RUNNING)
+               has_run = 1;
+           if (current_jobs[i].processes[j].status == SUSPENDED)
+               has_susp = 1;
+       }
+       if (has_run == 0)
+       {
+           if (has_susp == 1)
+           {
+               printf(" Job %s has been suspended\n", current_jobs[i].job_name);
+               current_jobs[i].status = SUSPENDED;
+           } 
+           else 
+           {
+               printf(" Job %s has finished\n", current_jobs[i].job_name);
+               current_jobs[i].status = FINISHED;
+           }
+       }
+    }
+}
+
 int main(int argc, char** argv)
 {
     char *s;
@@ -919,11 +1223,15 @@ int main(int argc, char** argv)
             run_jobs(n, jobs);
         clear_information(jobs, n);
         if (exitflag == 0)
+        {
+            check_finished_processes();
             printf("msh$ ");
+        }
         else 
             break;
     }
     free_variables();
     free_exported_variables();
+    free_active_jobs();
     return 0;
 }
