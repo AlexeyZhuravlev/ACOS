@@ -671,7 +671,7 @@ char* add_exp_variable(char* word)
     char** success = (char**)realloc(exported_variables, (++number_of_exported_variables)*sizeof(char*));
     if (success == NULL)
     {
-        fprintf(stderr, "Not enought memory");
+        fprintf(stderr, "Not enought memory\n");
         number_of_exported_variables--;
         free_exported_variables();
         exit(1);
@@ -1064,7 +1064,7 @@ void run_jobs(int n, struct job* jobs)
     int i;
     for (i = 0; i < n; i++)
     {
-        if (jobs->background == 0)
+        if (jobs[i].background == 0)
             run_job_foreground(&jobs[i]);
         else
             run_job_background(&jobs[i]);
