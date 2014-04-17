@@ -732,66 +732,66 @@ void wake_job(int n)
             current_jobs[n].processes[i].status = RUNNING;
         }
     current_jobs[n].status = RUNNING;
-    printf(" Job %s has continued\n", current_jobs[n].job_name);
+    fprintf(stderr, " Job %s has continued\n", current_jobs[n].job_name);
 }
 
 void fg(int argc, char** argv)
 {
-   int n;
-   if (argc == 1)
-       n = get_first_not_finished();
-   else
-       n = atoi(argv[1]);
-   if (n == -1)
-       return;
-   if (n >= number_of_jobs || current_jobs[n].status == FINISHED)
-       fprintf(stderr, "No active job with number %d\n", n);
-   else 
-   {
-       int i, status, has_stop = 0;
-       tcsetpgrp(0, current_jobs[n].group);
-       if (current_jobs[n].status == SUSPENDED)
-           wake_job(n);
-       for (i = 0; i < current_jobs[n].number_of_processes; i++)
-       {
-           waitpid(current_jobs[n].processes[i].pid, &status, WUNTRACED);
-           if (WIFSTOPPED(status))
-           {
-               current_jobs[n].processes[i].status = SUSPENDED;
-               has_stop = 1;
-           }
-           else
-               current_jobs[n].processes[i].status = FINISHED;
-       }
-       if (has_stop)
-       {
-           printf(" Job %s has been suspended\n", current_jobs[n].job_name);
-           current_jobs[n].status = SUSPENDED;
-       }
-       else
-           current_jobs[n].status = FINISHED;
-       tcsetpgrp(0, getpgid(getpid()));
-   }
+    int n;
+    if (argc == 1)
+        n = get_first_not_finished();
+    else
+        n = atoi(argv[1]);
+    if (n == -1)
+        return;
+    if (n >= number_of_jobs || current_jobs[n].status == FINISHED)
+        fprintf(stderr, "No active job with number %d\n", n);
+    else
+    {
+        int i, status, has_stop = 0;
+        tcsetpgrp(0, current_jobs[n].group);
+        if (current_jobs[n].status == SUSPENDED)
+            wake_job(n);
+        for (i = 0; i < current_jobs[n].number_of_processes; i++)
+        {
+            waitpid(current_jobs[n].processes[i].pid, &status, WUNTRACED);
+            if (WIFSTOPPED(status))
+            {
+                current_jobs[n].processes[i].status = SUSPENDED;
+                has_stop = 1;
+            }
+            else
+                current_jobs[n].processes[i].status = FINISHED;
+        }
+        if (has_stop)
+        {
+            printf(" Job %s has been suspended\n", current_jobs[n].job_name);
+            current_jobs[n].status = SUSPENDED;
+        }
+        else
+            current_jobs[n].status = FINISHED;
+        tcsetpgrp(0, getpgid(getpid()));
+    }
 }
 
 void bg(int argc, char** argv)
 {
-   int n;
-   if (argc == 1)
-       n = get_first_not_finished();
-   else
-       n = atoi(argv[1]);
-   if (n == -1)
-       return;
-   if (n >= number_of_jobs || current_jobs[n].status != SUSPENDED)
-   {
-       if (n >= number_of_jobs || current_jobs[n].status == FINISHED)
-           fprintf(stderr, "No active job with number %d\n", n);
-       else if (current_jobs[n].status == RUNNING)
-           fprintf(stderr, "Job number %d is already running", n);
-   }
-   else
-       wake_job(n);
+    int n;
+    if (argc == 1)
+        n = get_first_not_finished();
+    else
+        n = atoi(argv[1]);
+    if (n == -1)
+        return;
+    if (n >= number_of_jobs || current_jobs[n].status != SUSPENDED)
+    {
+        if (n >= number_of_jobs || current_jobs[n].status == FINISHED)
+            fprintf(stderr, "No active job with number %d\n", n);
+        else if (current_jobs[n].status == RUNNING)
+            fprintf(stderr, "Job number %d is already running", n);
+    }
+    else
+        wake_job(n);
 }
 
 int try_built_in(struct job* new_job)
@@ -826,12 +826,57 @@ int try_built_in(struct job* new_job)
     return 0;
 }
 
+void mcat(int argc, char** argv)
+{
+    FILE* input;
+    char* string;
+    int code;
+    if (argc == 1)
+        input = stdin;
+    else 
+        input = fopen(argv[1], "r");
+    if (input == NULL)
+    {
+        fprintf(stderr, "Unable to open %s\n", argv[1]);
+        exit(1);
+    }
+    while ((code = safe_gets(input, &string)) != EOF)
+    {
+        if (code == 0)
+        {
+            printf("%s\n", string);
+            free(string);
+        } else
+        {
+            fprintf(stderr, "Reading problems\n");
+            exit(code);
+        }
+    }
+    exit(0);
+}
+
+void msed(int argc, char** argv)
+{
+    exit(0);
+}
+
+void msort(int argc, char** argv)
+{
+    exit(0);
+}
+
 void try_built_in_conv(struct program* new_program)
 {
     if (strcmp(new_program->name, "pwd") == 0)
         mpwd();
     if (strcmp(new_program->name, "jobs") == 0)
         jobs();
+    if (strcmp(new_program->name, "mcat") == 0)
+        mcat(new_program->number_of_arguments, new_program->arguments);
+    if (strcmp(new_program->name, "msed") == 0)
+        msed(new_program->number_of_arguments, new_program->arguments);
+    if (strcmp(new_program->name, "msort") == 0)
+        msort(new_program->number_of_arguments, new_program->arguments);
 }
 
 void free_lakes(int** lakes, int n)
@@ -890,7 +935,9 @@ int run_job(struct job* new_job, struct active_job* possible_job)
                 {
                     dup2(input, 0);
                     close(input);
-                } else {
+                }
+                else
+                {
                     fprintf(stderr, "unable to open input file\n");
                     exit(1);
                 }
@@ -959,7 +1006,7 @@ char* form_job_name(struct job* new_job)
     result = (char*)malloc(len * sizeof(char));
     if (result == NULL)
     {
-        fprintf(stderr, "Memory allocation error");
+        fprintf(stderr, "Memory allocation error\n");
         return NULL;
     }
     result[0] = '\0';
@@ -980,7 +1027,7 @@ char* form_job_name(struct job* new_job)
         {
             if (new_job->programs[i].output_type == 1)
                 strcat(result, "> ");
-            else 
+            else
                 strcat(result, ">> ");
             strcat(result, new_job->programs[i].output_file);
             strcat(result, " ");
@@ -1031,9 +1078,9 @@ void run_job_foreground(struct job* new_job)
                 free(possible_job.job_name);
                 return;
             }
-            printf(" Job %s has been suspended\n", possible_job.job_name);
+            fprintf(stderr, " Job %s has been suspended\n", possible_job.job_name);
         }
-        else 
+        else
         {
             free(possible_job.processes);
             free(possible_job.job_name);
@@ -1168,42 +1215,42 @@ void check_finished_processes()
 {
     int i, j, status, has_run = 0, has_susp = 0;
     for (i = 0; i < number_of_jobs; i++)
-    if (current_jobs[i].status == RUNNING)
-    {
-        for (j = 0; j < current_jobs[i].number_of_processes; j++)
-            if (current_jobs[i].processes[j].status == RUNNING)
-            {
-                if (waitpid(current_jobs[i].processes[j].pid, &status, WUNTRACED | WNOHANG) 
-                    == current_jobs[i].processes[j].pid)
+        if (current_jobs[i].status == RUNNING)
+        {
+            for (j = 0; j < current_jobs[i].number_of_processes; j++)
+                if (current_jobs[i].processes[j].status == RUNNING)
                 {
-                    last_pid = WEXITSTATUS(status);
-                    if (WIFSTOPPED(status))
-                        current_jobs[i].processes[j].status = SUSPENDED;
-                    else
-                        current_jobs[i].processes[j].status = FINISHED;
+                    if (waitpid(current_jobs[i].processes[j].pid, &status, WUNTRACED | WNOHANG)
+                            == current_jobs[i].processes[j].pid)
+                    {
+                        last_pid = WEXITSTATUS(status);
+                        if (WIFSTOPPED(status))
+                            current_jobs[i].processes[j].status = SUSPENDED;
+                        else
+                            current_jobs[i].processes[j].status = FINISHED;
+                    }
+                }
+            for (j = 0; j < current_jobs[i].number_of_processes; j++)
+            {
+                if (current_jobs[i].processes[j].status == RUNNING)
+                    has_run = 1;
+                if (current_jobs[i].processes[j].status == SUSPENDED)
+                    has_susp = 1;
+            }
+            if (has_run == 0)
+            {
+                if (has_susp == 1)
+                {
+                    fprintf(stderr, " Job %s has been suspended\n", current_jobs[i].job_name);
+                    current_jobs[i].status = SUSPENDED;
+                }
+                else
+                {
+                    fprintf(stderr, " Job %s has finished\n", current_jobs[i].job_name);
+                    current_jobs[i].status = FINISHED;
                 }
             }
-       for (j = 0; j < current_jobs[i].number_of_processes; j++)
-       {
-           if (current_jobs[i].processes[j].status == RUNNING)
-               has_run = 1;
-           if (current_jobs[i].processes[j].status == SUSPENDED)
-               has_susp = 1;
-       }
-       if (has_run == 0)
-       {
-           if (has_susp == 1)
-           {
-               printf(" Job %s has been suspended\n", current_jobs[i].job_name);
-               current_jobs[i].status = SUSPENDED;
-           } 
-           else 
-           {
-               printf(" Job %s has finished\n", current_jobs[i].job_name);
-               current_jobs[i].status = FINISHED;
-           }
-       }
-    }
+        }
 }
 
 int main(int argc, char** argv)
@@ -1227,7 +1274,7 @@ int main(int argc, char** argv)
             check_finished_processes();
             printf("msh$ ");
         }
-        else 
+        else
             break;
     }
     free_variables();
