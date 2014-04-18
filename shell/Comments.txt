@@ -1,45 +1,5 @@
-Ну у меня проблемы, твой шелл в случае чтения пустой команды и EOF соответственно сообщает 
-наружу в exit, что он завершился с ошибкой, что конечно не правда.
 
-В конце я нажал ctrl+d
-
-alex@newkola:~/src/prac/studs/fiztech-2014/src/zhuravlev/shell$ ./msh 
-msh$ echo $SHELL
-/home/alex/src/prac/studs/fiztech-2014/src/zhuravlev/shell/msh
-msh$ echo $PWD 
-/home/alex/src/prac/studs/fiztech-2014/src/zhuravlev/shell
-msh$         
-msh$ cd ..
-msh$ pwd
-/home/alex/src/prac/studs/fiztech-2014/src/zhuravlev
-msh$ *** Error in `./msh': munmap_chunk(): invalid pointer: 0x0000000000403998 ***
-======= Backtrace: =========
-/lib/x86_64-linux-gnu/libc.so.6(+0x7aa26)[0x7f960a349a26]
-./msh[0x4031e3]
-./msh[0x403632]
-/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0xf5)[0x7f960a2f0995]
-./msh[0x401069]
-======= Memory map: ========
-00400000-00404000 r-xp 00000000 09:00 492139                             /home/alex/src/prac/studs/fiztech-2014/src/zhuravlev/shell/msh
-00604000-00605000 rw-p 00004000 09:00 492139                             /home/alex/src/prac/studs/fiztech-2014/src/zhuravlev/shell/msh
-01f48000-01f69000 rw-p 00000000 00:00 0                                  [heap]
-7f960a0b9000-7f960a0ce000 r-xp 00000000 08:16 14754                      /lib/x86_64-linux-gnu/libgcc_s.so.1
-7f960a0ce000-7f960a2ce000 ---p 00015000 08:16 14754                      /lib/x86_64-linux-gnu/libgcc_s.so.1
-7f960a2ce000-7f960a2cf000 rw-p 00015000 08:16 14754                      /lib/x86_64-linux-gnu/libgcc_s.so.1
-7f960a2cf000-7f960a471000 r-xp 00000000 08:16 14712                      /lib/x86_64-linux-gnu/libc-2.17.so
-7f960a471000-7f960a671000 ---p 001a2000 08:16 14712                      /lib/x86_64-linux-gnu/libc-2.17.so
-7f960a671000-7f960a675000 r--p 001a2000 08:16 14712                      /lib/x86_64-linux-gnu/libc-2.17.so
-7f960a675000-7f960a677000 rw-p 001a6000 08:16 14712                      /lib/x86_64-linux-gnu/libc-2.17.so
-7f960a677000-7f960a67b000 rw-p 00000000 00:00 0 
-7f960a67b000-7f960a69c000 r-xp 00000000 08:16 14722                      /lib/x86_64-linux-gnu/ld-2.17.so
-7f960a86d000-7f960a870000 rw-p 00000000 00:00 0 
-7f960a897000-7f960a89c000 rw-p 00000000 00:00 0 
-7f960a89c000-7f960a89d000 r--p 00021000 08:16 14722                      /lib/x86_64-linux-gnu/ld-2.17.so
-7f960a89d000-7f960a89f000 rw-p 00022000 08:16 14722                      /lib/x86_64-linux-gnu/ld-2.17.so
-7fffbd860000-7fffbd881000 rw-p 00000000 00:00 0                          [stack]
-7fffbd9fc000-7fffbd9fd000 r-xp 00000000 00:00 0                          [vdso]
-ffffffffff600000-ffffffffff601000 r-xp 00000000 00:00 0                  [vsyscall]
-Аварийный останов
-
-
+Есть проблема с конструкцие вида prog > $НЕТ_ТАКОЙ_ПЕРЕМЕННОЙ оно почему-то печатает в поток вывода, вместо того, чтобы сказать незя.
+ 
+А теперь я запустил в фоне, и нажал ctrl+c и оно вышло оставив работающий фоновый процесс.
 
