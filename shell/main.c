@@ -104,7 +104,7 @@ char* decode_macros(char** macros, int* macros_len)
         if (result == NULL)
         {
             *macros_len = 0;
-            return NULL;
+            return strdup("");
         }
         sprintf(result, "%d", last_pid);
         *macros_len = strlen(result);
@@ -367,8 +367,15 @@ int getprogram(char** begin, char** string, struct program* new_program, int* re
                     fprintf(stderr, "Error: name of input for program expected\n");
                     return ERROR;
                 }
-                else
-                    new_program->input_file = lexeme;
+                else 
+                    if (strcmp(lexeme, "") == 0)
+                    {
+                        free(lexeme);
+                        fprintf(stderr, "Invalid input redirection\n");
+                        return ERROR;
+                    } 
+                    else
+                        new_program->input_file = lexeme;
             }
         }
         else if (res == WRITE || res == APPEND)
@@ -387,6 +394,12 @@ int getprogram(char** begin, char** string, struct program* new_program, int* re
                     fprintf(stderr, "Error: name of output for program expected\n");
                     return ERROR;
                 }
+                else if (strcmp(lexeme, "") ==0)
+                {
+                    free(lexeme);
+                    fprintf(stderr, "Invalid output redirection\n");
+                    return ERROR;
+                } 
                 else
                 {
                     new_program->output_file = lexeme;
@@ -921,6 +934,9 @@ int run_job(struct job* new_job, struct active_job* possible_job)
             setpgid(pid, group_number);
         if (pid == 0)
         {
+            signal(SIGTTOU, SIG_DFL);
+            signal(SIGINT, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
             for (j = 0; j < new_job->number_of_programs - 1; j++)
             {
                 if (j != i - 1)
@@ -1253,10 +1269,23 @@ void check_finished_processes()
         }
 }
 
+void kill_active_ps()
+{
+    int i;
+    for (i = 0; i < number_of_jobs; i++)
+        if (current_jobs[i].status != FINISHED)
+        {
+            kill(-current_jobs[i].group, SIGCONT);
+            kill(-current_jobs[i].group, SIGTERM);
+        }
+}
+
 int main(int argc, char** argv)
 {
     char *s;
     signal(SIGTTOU, SIG_IGN);
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);
     init_variables(argc, argv);
     printf("msh$ ");
     while (safe_gets(stdin, &s) != EOF)
@@ -1279,6 +1308,7 @@ int main(int argc, char** argv)
     }
     free_variables();
     free_exported_variables();
+    kill_active_ps();
     free_active_jobs();
     return 0;
 }
