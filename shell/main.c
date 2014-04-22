@@ -30,6 +30,9 @@
 #define SUSPENDED 1002
 #define FINISHED 1003
 
+#define EMPTY_SAMPLE 501
+#define MEMORY_PROBLEM 502
+
 struct variable
 {
     char* name;
@@ -865,16 +868,209 @@ void mcat(int argc, char** argv)
             exit(code);
         }
     }
+    fclose(input);
     exit(0);
+}
+
+int replace(const char* source, const char* old_sample, const char* new_sample, char** result)
+{
+    int len = strlen(source);
+    int sample_len = strlen(old_sample);
+    int new_sample_len = strlen(new_sample);
+    int i, j, z, k, previous_prefix, result_size;
+    int* prefix_sample;
+    int* positions;
+    if (sample_len == 0)
+        return EMPTY_SAMPLE;
+    prefix_sample = (int*) malloc(sample_len * sizeof(int));
+    if (prefix_sample == NULL)
+        return MEMORY_PROBLEM;
+    prefix_sample[0] = 0;
+    for (i = 1; i < sample_len; i++)
+    {
+        j = prefix_sample[i - 1];
+        while (j > 0 && old_sample[i] != old_sample[j])
+            j = prefix_sample[j - 1];
+        if (old_sample[j] == old_sample[i])
+            j++;
+        prefix_sample[i] = j;
+    }
+    positions = (int*) calloc(len, sizeof(int));
+    if (positions == NULL)
+        return MEMORY_PROBLEM;
+    k = 0;
+    previous_prefix = 0;
+    for (i = 0; i < len; i++)
+    {
+        positions[i] = 0;
+        j = previous_prefix;
+        while (j>0 && old_sample[j] != source[i])
+            j = prefix_sample[j - 1];
+        if (old_sample[j] == source[i])
+            j++;
+        if (j == sample_len)
+        {
+            positions[i - sample_len + 1] = 1;
+            k++;
+            previous_prefix = 0;
+        }
+        else
+            previous_prefix = j;
+    }
+    free(prefix_sample);
+    result_size = len + k * (new_sample_len - sample_len);
+    *result = (char*)malloc(result_size + 1);
+    if (*result == NULL)
+        return MEMORY_PROBLEM;
+    j = 0;
+    for (i = 0; i < len; i++)
+    {
+        if (positions[i] == 0)
+        {
+            (*result)[j] = source[i];
+            j++;
+        }
+        else    
+        {
+            for (z = 0; z < new_sample_len; z++)
+                (*result)[j+z] = new_sample[z];
+            j += new_sample_len;
+            i += sample_len - 1;
+        }
+    }
+    free(positions);
+    (*result)[result_size] = '\0';
+    return 0;
 }
 
 void msed(int argc, char** argv)
 {
+    int code, replace_code;
+    char *string, *old_sample, *new_sample, *new_string;
+    if (argc < 3)
+    {
+        fprintf(stderr, "Not enough arguments for msed\n");
+        exit(1);
+    }
+    old_sample = argv[1];
+    new_sample = argv[2];
+    while ((code = safe_gets(stdin, &string)) != EOF)
+    {
+        if (code == 0)
+        {
+            replace_code = replace(string, old_sample, new_sample, &new_string);
+            if (replace_code == 0)
+            {
+                printf("%s\n", new_string);
+                free(string);
+                free(new_string);
+            }
+            else
+            {
+                fprintf(stderr, "Memory allocation problem\n");
+                exit(replace_code);
+            }
+        } else
+        {
+            fprintf(stderr, "Reading problems\n");
+            exit(code);
+        }
+    }
     exit(0);
+}
+
+void free_strings(char** strings, int number_of_strings)
+{
+    int i;
+    for (i = 0; i < number_of_strings; i++)
+        free(strings[i]);
+    free(strings);
+}
+
+int strcmp_d(const void* a, const void* b)
+{
+    return strcmp(*(char**)a, *(char**)b);
+}
+
+int strcmp_u(const void* a, const void* b)
+{
+    return strcmp(*(char**)b, *(char**)a);
 }
 
 void msort(int argc, char** argv)
 {
+    FILE *f1, *f2;
+    int code, number_of_strings = 0, i;
+    char* string;
+    char** strings = NULL;
+    char** success;
+    int (*cmp)(const void*, const void*);
+    if (argc < 2)
+    {
+        fprintf(stderr, "Name of file expected\n");
+        exit(1);
+    }
+    f1 = fopen(argv[1], "r");
+    if (f1 == NULL)
+    {
+        fprintf(stderr, "Unable to open %s for reading\n", argv[1]);
+        exit(1);
+    }
+    if (argc < 3)
+    {
+        fprintf(stderr, "Sorting option expected: -u or -d\n");
+        exit(1);
+    }
+    if (strcmp(argv[2], "-d") == 0)
+    {
+       cmp = strcmp_d; 
+    }
+    else if (strcmp(argv[2], "-u") == 0)
+    {
+        cmp = strcmp_u;
+    }
+    else
+    {
+        fprintf(stderr, "Invalid sorting option: -u or -d expected\n");
+        exit(1);
+    }
+    while ((code = safe_gets(f1, &string)) != EOF)
+    {
+        if (code == 0)
+        {
+            number_of_strings++;
+            success = (char**)realloc(strings, number_of_strings * sizeof(char*));
+            if (success == NULL)
+            {
+                free(strings);
+                free_strings(strings, number_of_strings);
+                fprintf(stderr, "Memory allocation problem\n");
+                exit(1);
+            }
+            else
+            {
+                strings = success;
+                strings[number_of_strings - 1] = string;
+            }
+        } else
+        {
+            fprintf(stderr, "Reading problems\n");
+            free_strings(strings, number_of_strings);
+            exit(code);
+        }
+    }
+    qsort(strings, number_of_strings, sizeof(char*), cmp);
+    fclose(f1);
+    f2 = fopen(argv[1], "w");
+    if (f2 == NULL)
+    {
+        fprintf(stderr, "Unable to open %s for rewriting\n", argv[1]);
+        exit(1); 
+    }
+    for (i = 0; i < number_of_strings; i++)
+        fprintf(f2, "%s\n", strings[i]);
+    fclose(f2);
+    free_strings(strings, number_of_strings);
     exit(0);
 }
 
