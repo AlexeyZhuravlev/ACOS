@@ -370,15 +370,14 @@ int getprogram(char** begin, char** string, struct program* new_program, int* re
                     fprintf(stderr, "Error: name of input for program expected\n");
                     return ERROR;
                 }
-                else 
-                    if (strcmp(lexeme, "") == 0)
-                    {
-                        free(lexeme);
-                        fprintf(stderr, "Invalid input redirection\n");
-                        return ERROR;
-                    } 
-                    else
-                        new_program->input_file = lexeme;
+                else if (strcmp(lexeme, "") == 0)
+                {
+                    free(lexeme);
+                    fprintf(stderr, "Invalid input redirection\n");
+                    return ERROR;
+                }
+                else
+                    new_program->input_file = lexeme;
             }
         }
         else if (res == WRITE || res == APPEND)
@@ -402,7 +401,7 @@ int getprogram(char** begin, char** string, struct program* new_program, int* re
                     free(lexeme);
                     fprintf(stderr, "Invalid output redirection\n");
                     return ERROR;
-                } 
+                }
                 else
                 {
                     new_program->output_file = lexeme;
@@ -849,7 +848,7 @@ void mcat(int argc, char** argv)
     int code;
     if (argc == 1)
         input = stdin;
-    else 
+    else
         input = fopen(argv[1], "r");
     if (input == NULL)
     {
@@ -862,7 +861,8 @@ void mcat(int argc, char** argv)
         {
             printf("%s\n", string);
             free(string);
-        } else
+        }
+        else
         {
             fprintf(stderr, "Reading problems\n");
             exit(code);
@@ -930,7 +930,7 @@ int replace(const char* source, const char* old_sample, const char* new_sample, 
             (*result)[j] = source[i];
             j++;
         }
-        else    
+        else
         {
             for (z = 0; z < new_sample_len; z++)
                 (*result)[j+z] = new_sample[z];
@@ -970,7 +970,8 @@ void msed(int argc, char** argv)
                 fprintf(stderr, "Memory allocation problem\n");
                 exit(replace_code);
             }
-        } else
+        }
+        else
         {
             fprintf(stderr, "Reading problems\n");
             exit(code);
@@ -1023,7 +1024,7 @@ void msort(int argc, char** argv)
     }
     if (strcmp(argv[2], "-d") == 0)
     {
-       cmp = strcmp_d; 
+        cmp = strcmp_d;
     }
     else if (strcmp(argv[2], "-u") == 0)
     {
@@ -1052,7 +1053,8 @@ void msort(int argc, char** argv)
                 strings = success;
                 strings[number_of_strings - 1] = string;
             }
-        } else
+        }
+        else
         {
             fprintf(stderr, "Reading problems\n");
             free_strings(strings, number_of_strings);
@@ -1065,7 +1067,7 @@ void msort(int argc, char** argv)
     if (f2 == NULL)
     {
         fprintf(stderr, "Unable to open %s for rewriting\n", argv[1]);
-        exit(1); 
+        exit(1);
     }
     for (i = 0; i < number_of_strings; i++)
         fprintf(f2, "%s\n", strings[i]);
