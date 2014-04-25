@@ -1431,6 +1431,8 @@ void check_finished_processes()
     for (i = 0; i < number_of_jobs; i++)
         if (current_jobs[i].status == RUNNING)
         {
+            has_run = 0;
+            has_susp = 0;
             for (j = 0; j < current_jobs[i].number_of_processes; j++)
                 if (current_jobs[i].processes[j].status == RUNNING)
                 {
