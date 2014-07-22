@@ -12,9 +12,6 @@
 #include <signal.h>
 #include <fcntl.h>
 
-#define WALL '#'
-#define EMPTY '.'
-
 #define MAX_TIMESPAN 50
 
 #define WAITING 1001
@@ -22,11 +19,18 @@
 #define FINISHED 1003
 #define CANCELED 1004
 
+#define EMPTY '.'
+#define WALL '#'
+#define MEDKIT '+'
+#define POISON '-'
+#define SURPRISE '?'
 
 struct player_t
 {
     char* name;
     int socket;
+    int health;
+    int y, x;
 };
 
 struct game_t
@@ -36,12 +40,17 @@ struct game_t
     int number_of_players;
     int max_number_of_players;
     int state; /* WAITING, RUNNING, FINISHED, CANCELED */
+    int n_winner;
     pthread_t thread;
 };
 
+struct koordinate_t
+{
+    int y;
+    int x;
+};
+
 int server_active = 1;
-char** game_map;
-int game_map_n, game_map_m;
 struct game_t* games = NULL;
 int number_of_games = 0;
 int* thread_game_numbers = NULL;
@@ -54,6 +63,14 @@ int* host_to_game = NULL;
 int n_hosts = 0;
 pthread_mutex_t players_mutex;
 
+char** game_map;
+int game_map_n, game_map_m;
+int max_health, max_plus, max_minus;
+int damage_base, damage_delta, damage_radius;
+int n_medkits, n_poisons, n_surprise;
+struct koordinate_t* empties;
+int n_empties;
+
 char* strdup(const char *s);
 
 void read_map(char* filename)
@@ -65,15 +82,29 @@ void read_map(char* filename)
         printf("Invalid map filename\n");
         exit(1);
     }
-    fscanf(stream, "%d%d", &n, &m);
-    game_map = (char**)malloc(n * sizeof(char*));
+    fscanf(stream, "%d%d%d\n", &max_health, &max_plus, &max_minus);
+    fscanf(stream, "%d%d%d\n", &n_medkits, &n_poisons, &n_surprise);
+    fscanf(stream, "%d%d%d\n", &damage_base, &damage_delta, &damage_radius);
+    fscanf(stream, "%d%d\n", &n, &m);
+    empties = malloc(n * m * sizeof(struct koordinate_t));
+    n_empties = 0;
+    game_map = (char**)malloc(n * sizeof(char*)); 
     for (i = 0; i < n; i++)
     {
         game_map[i] = (char*)malloc(m * sizeof(char));
         for (j = 0; j < m; j++)
+        {
             game_map[i][j] = fgetc(stream);
+            if (game_map[i][j] == EMPTY)
+            {
+                n_empties++;
+                empties[n_empties - 1].y = i;
+                empties[n_empties - 1].x = j;
+            }
+        }
         fgetc(stream);
     }
+    empties = realloc(empties, n_empties * sizeof(struct koordinate_t));
     game_map_n = n;
     game_map_m = m;
 }
@@ -273,47 +304,280 @@ void return_to_menu(int socket)
     share_all_active_games(socket);
 }
 
+struct koordinate_t put_in_random_place(char** map, int symbol)
+{
+    char flag = 1;
+    int y, x, ind;
+    struct koordinate_t result;
+    do
+    {
+        ind = rand() % n_empties;
+        y = empties[ind].y;
+        x = empties[ind].x;
+        if (map[y][x] == EMPTY)
+        {
+           map[y][x] = symbol;
+           flag = 0;
+        }
+    } while (flag);
+    result.x = x;
+    result.y = y;
+    return result;
+}
+
+void init_map(char** map, struct player_t* players, int number_of_players)
+{
+    int i, j;
+    struct koordinate_t player_place;
+    for (i = 0; i < game_map_n; i++)
+        for (j = 0; j < game_map_m; j++)
+            map[i][j] = game_map[i][j];
+    for (i = 0; i < n_medkits; i++)
+        put_in_random_place(map, MEDKIT);
+    for (i = 0; i < n_poisons; i++)
+        put_in_random_place(map, POISON);
+    for (i = 0; i < n_surprise; i++)
+        put_in_random_place(map, SURPRISE);
+    for (i = 0; i < number_of_players; i++)
+    {
+        player_place = put_in_random_place(map, '1' + i);
+        players[i].x = player_place.x;
+        players[i].y = player_place.y;
+    }
+}
+
+void send_map(char** map, int socket)
+{
+    int i;
+    write(socket, &max_health, sizeof(int));
+    write(socket, &damage_radius, sizeof(int));
+    write(socket, &game_map_n, sizeof(int));
+    write(socket, &game_map_m, sizeof(int));
+    for (i = 0; i < game_map_n; i++)
+        write(socket, map[i], game_map_m * sizeof(char));
+}
+
+void send_players(int socket, struct player_t* players, int n_players)
+{
+    int i, len;
+    write(socket, &n_players, sizeof(int));
+    for (i = 0; i < n_players; i++)
+    {
+        len = strlen(players[i].name) + 1;
+        write(socket, &len, sizeof(int));
+        write(socket, players[i].name, len * sizeof(char));
+        write(socket, &players[i].x, sizeof(int));
+        write(socket, &players[i].y, sizeof(int));
+    }
+}
+
+void share_player_information(int number, struct player_t* players, 
+                              int n_players, char** map)
+{
+    int i, socket;
+    struct player_t player = players[number];
+    char letter = '1' + number;
+    for (i = 0; i < n_players; i++)
+    {
+        socket = players[i].socket;
+        if (socket > 0)
+        {
+            write(socket, &letter, sizeof(char));
+            write(socket, &player.x, sizeof(int));
+            write(socket, &player.y, sizeof(int));
+            write(socket, &player.health, sizeof(int));
+        }
+    }
+    if (players[number].health == 0)
+        map[players[number].y][players[number].x] = EMPTY;
+}
+
+int check_game_finish(struct player_t* players, int n_players)
+{
+    int i, socket;
+    int k = 0;
+    int q = -1;
+    for (i = 0; i < n_players; i++)
+        if (players[i].health > 0)
+        {
+            k++;
+            q = i;
+        }
+    if (k == 1)
+    {
+        for (i = 0; i < n_players; i++)
+            if (players[i].socket > 0)
+            {
+                socket = players[i].socket;
+                write(socket, "W", sizeof(char));
+                write(socket, &q, sizeof(int));
+            }
+        return q;
+    }
+    else
+        return -1;
+}
+
+int valid_point(char** map, int x, int y)
+{
+    if (y >= game_map_n || x >= game_map_m || y < 0 || x < 0)
+        return 0;
+    return (map[y][x] == EMPTY || map[y][x] == MEDKIT
+            || map[y][x] == POISON || map[y][x] == SURPRISE);
+}
+
+void eat_medkit(struct player_t* player)
+{
+    int heal = rand() % max_plus + 1;
+    player->health += heal;
+}
+
+void drink_poison(struct player_t* player)
+{
+    int damage = rand() % max_minus + 1;
+    player->health -= damage;
+    if (player->health < 0)
+        player->health = 0;
+}
+
+int move(int player_number, struct player_t* players, int n_players, 
+             char** local_map, int dx, int dy)
+{
+    int old_x = players[player_number].x;
+    int old_y = players[player_number].y;
+    int new_x = old_x + dx;
+    int new_y = old_y + dy;
+    if (players[player_number].health == 0 || 
+        !valid_point(local_map, new_x, new_y))
+    return -1;
+    if (local_map[new_y][new_x] == MEDKIT)
+        eat_medkit(&players[player_number]);
+    if (local_map[new_y][new_x] == POISON)
+        drink_poison(&players[player_number]);
+    if (local_map[new_y][new_x] == SURPRISE)
+    {
+        if (rand() % 2 == 1)
+            eat_medkit(&players[player_number]);
+        else
+            drink_poison(&players[player_number]);
+    }
+    local_map[new_y][new_x] = local_map[old_y][old_x];
+    local_map[old_y][old_x] = EMPTY;
+    players[player_number].x = new_x;
+    players[player_number].y = new_y;
+    share_player_information(player_number, players, n_players, local_map);
+    if (players[player_number].health == 0)
+        return check_game_finish(players, n_players);
+    else
+        return -1;
+}
+
+
+int blow(int player_number, struct player_t* players, int n_players,
+           char** local_map)
+{
+    return -1;
+}
+
+void get_ready_and_start_game(struct player_t* players, int n_players)
+{
+    int i;
+    char t;
+    for (i = 0; i < n_players; i++)
+        read(players[i].socket, &t, sizeof(char));
+    for (i = 0; i < n_players; i++)
+        write(players[i].socket, "G", sizeof(char));
+}
+
 void* game_start(void* arg)
 {
     struct pollfd* game_players;
-    int i;
-    int alive_players;
-    struct game_t game;
+    char** local_map;
+    struct player_t* players;
+    char* game_name;
+    int number_of_players;
+    int i, ind;
+    int connected_players;
+    int q = -1;
+    ind = *((int*)arg);
+
     pthread_mutex_lock(&game_mutex);
-    game = games[*((int*)arg)];
+    games[ind].state = RUNNING;
+    players = games[ind].players;
+    game_name = games[ind].game_name;
+    number_of_players = games[ind].number_of_players;
     pthread_mutex_unlock(&game_mutex);
-    game_players = malloc(game.number_of_players * sizeof(struct pollfd));
-    alive_players = game.number_of_players;
-    for (i = 0; i < game.number_of_players; i++)
+
+    local_map = malloc(game_map_n * sizeof(char*));
+    for (i = 0; i < game_map_n; i++)
+        local_map[i] = malloc(game_map_m * sizeof(char));
+    init_map(local_map, players, number_of_players);
+    game_players = malloc(number_of_players * sizeof(struct pollfd));
+    connected_players = number_of_players;
+    for (i = 0; i < number_of_players; i++)
     {
-        game_players[i].fd = game.players[i].socket;
+        game_players[i].fd = players[i].socket;
         game_players[i].events = POLLIN;
+        write(players[i].socket, &i, sizeof(int));
+        send_map(local_map, players[i].socket);
+        send_players(players[i].socket, players, number_of_players);
+        players[i].health = max_health;
     }
-    while (alive_players)
+
+    get_ready_and_start_game(players, number_of_players);
+
+    while (connected_players)
     {
-        if (poll(game_players, game.number_of_players, MAX_TIMESPAN))
-        {
-            for (i = 0; i < game.number_of_players; i++)
-                if (game_players[i].revents == POLLIN)
+        poll(game_players, number_of_players, -1);
+        for (i = 0; i < number_of_players; i++)
+            if (game_players[i].revents == POLLIN)
+            {
+                char decision;
+                read(game_players[i].fd, &decision, sizeof(char));
+                if (decision == 'Q')
                 {
-                    char decision;
-                    read(game_players[i].fd, &decision, sizeof(char));
-                    if (decision == 'D')
+                    write(players[i].socket, "Q", sizeof(char));
+                    return_to_menu(players[i].socket);
+                    game_players[i].fd = -game_players[i].fd;
+                    players[i].socket = -players[i].socket;
+                    printf("Player %s disconnected from the game %s.\n", 
+                            players[i].name, game_name);
+                    connected_players--;
+                    if (q == -1)
                     {
-                        return_to_menu(game.players[i].socket);
-                        game_players[i].fd = -game_players[i].fd;
-                        printf("Player %s left the game %s.\n", 
-                                game.players[i].name, game.game_name);
-                        alive_players--;
+                        players[i].health = 0;
+                        share_player_information(i, players, 
+                                        number_of_players, local_map);
+                        q = check_game_finish(players, number_of_players);
                     }
                 }
-        }
+                else if (q == -1)
+                {
+                    if (decision == 'L')
+                    q = move(i, players, number_of_players, local_map, -1, 0);
+                    else if (decision == 'R')
+                    q = move(i, players, number_of_players, local_map, 1, 0);
+                    else if (decision == 'U')
+                    q = move(i, players, number_of_players, local_map, 0, -1);
+                    else if (decision == 'D')
+                    q = move(i, players, number_of_players, local_map, 0, 1);
+                    else if (decision == 'B')
+                    q = blow(i, players, number_of_players, local_map);
+                }
+            }
     }
+
     free(game_players);
+    for (i = 0; i < game_map_n; i++)
+        free(local_map[i]);
+    free(local_map);
     pthread_mutex_lock(&game_mutex);
-    games[*((int*)arg)].state = FINISHED;
+    games[ind].state = FINISHED;
+    games[ind].n_winner = q;
+    printf("Game %s finished. %s wins the round.\n", games[ind].game_name,
+            players[q].name);
     pthread_mutex_unlock(&game_mutex);
-    printf("Game %s finished.\n", game.game_name);
+
     return NULL;
 }
 
@@ -346,7 +610,6 @@ void get_inside_lobbie_information()
                        for (j = 0; j < n_hosts; j++)
                            if (host_to_game[j] == game_number)
                                hosts[j].fd = -hosts[j].fd;
-                       games[game_number].state = RUNNING;
                        n_thread_game_numbers++;
                        thread_game_numbers = realloc(thread_game_numbers, 
                                     n_thread_game_numbers * sizeof(int));
