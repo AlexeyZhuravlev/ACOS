@@ -70,6 +70,7 @@ int damage_base, damage_delta, damage_radius;
 int n_medkits, n_poisons, n_surprise;
 struct koordinate_t* empties;
 int n_empties;
+int moratory;
 
 char* strdup(const char *s);
 
@@ -85,6 +86,7 @@ void read_map(char* filename)
     fscanf(stream, "%d%d%d\n", &max_health, &max_plus, &max_minus);
     fscanf(stream, "%d%d%d\n", &n_medkits, &n_poisons, &n_surprise);
     fscanf(stream, "%d%d%d\n", &damage_base, &damage_delta, &damage_radius);
+    fscanf(stream, "%d\n", &moratory);
     fscanf(stream, "%d%d\n", &n, &m);
     empties = malloc(n * m * sizeof(struct koordinate_t));
     n_empties = 0;
@@ -350,7 +352,7 @@ void send_map(char** map, int socket)
 {
     int i;
     write(socket, &max_health, sizeof(int));
-    write(socket, &damage_radius, sizeof(int));
+    write(socket, &moratory, sizeof(int));
     write(socket, &game_map_n, sizeof(int));
     write(socket, &game_map_m, sizeof(int));
     for (i = 0; i < game_map_n; i++)
@@ -472,11 +474,69 @@ int move(int player_number, struct player_t* players, int n_players,
         return -1;
 }
 
+void damage_from_blow(int player_number, int distanse, struct player_t* players,
+                        int n_players, char** local_map)
+{
+    int damage = damage_base - (distanse - 1) * damage_delta;
+    players[player_number].health -= damage;
+    if (players[player_number].health < 0)
+        players[player_number].health = 0;
+    share_player_information(player_number, players, n_players, local_map);
+}
+
+void try_add_to_queue(struct koordinate_t* queue, char** used, 
+                      char** local_map, int* r, int x, int y, int oldval)
+{
+    if (y >= game_map_n || x >= game_map_m || y < 0 || x < 0)
+        return;
+    if (used[y][x] == 0 && local_map[y][x] != WALL && oldval <= damage_radius)
+    {
+        used[y][x] = oldval + 1;
+        (*r)++;
+        queue[*r].x = x;
+        queue[*r].y = y;
+    }
+}
 
 int blow(int player_number, struct player_t* players, int n_players,
            char** local_map)
 {
-    return -1;
+    int i, max_queue_size, j, l, r, x, y;
+    char** used;
+    struct koordinate_t* queue;
+    if (players[player_number].health == 0)
+        return -1;
+    used = (char**)malloc(game_map_n * sizeof(char*));
+    for (i = 0; i < game_map_n; i++)
+        used[i] = (char*)malloc(game_map_m * sizeof(char));
+    for (i = 0; i < game_map_n; i++)
+        for (j = 0; j < game_map_m; j++)
+            used[i][j] = 0;
+    max_queue_size = (2 * damage_radius + 1) * (2 * damage_radius + 1);
+    queue = (struct koordinate_t*)malloc(max_queue_size
+                                            * sizeof(struct koordinate_t));
+    queue[0].x = players[player_number].x;
+    queue[0].y = players[player_number].y;
+    used[queue[0].y][queue[0].x] = 1;
+    l = r = 0;
+    do
+    {
+        x = queue[l].x;
+        y = queue[l].y;
+        try_add_to_queue(queue, used, local_map, &r, x - 1, y, used[y][x]);
+        try_add_to_queue(queue, used, local_map, &r, x + 1, y, used[y][x]);
+        try_add_to_queue(queue, used, local_map, &r, x, y - 1, used[y][x]);
+        try_add_to_queue(queue, used, local_map, &r, x, y + 1, used[y][x]);
+        if (local_map[y][x] >= '1' && local_map[y][x] <= '8' && l > 0)
+            damage_from_blow(local_map[y][x] - '1', used[y][x] - 1, 
+                             players, n_players, local_map);
+        l++;
+    } while (l <= r);
+    free(queue);
+    for (i = 0; i < game_map_n; i++)
+        free(used[i]);
+    free(used);
+    return check_game_finish(players, n_players);
 }
 
 void get_ready_and_start_game(struct player_t* players, int n_players)
@@ -700,7 +760,7 @@ int main(int argc, char** argv)
         printf("Unable to open/create journal file\n");
         return 1;
     }
- /*   dup2(journal, 1); */
+    dup2(journal, 1); 
     if (argc < 2)
     {
         printf("File with map expected\n");
@@ -723,5 +783,6 @@ int main(int argc, char** argv)
     serv_socket_number = open_connection(port);
     server_work(serv_socket_number);
     free_all_structures();
+    close(journal);
     return 0;
 }

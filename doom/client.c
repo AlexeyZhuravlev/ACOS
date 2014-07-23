@@ -10,6 +10,7 @@
 #include <poll.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <time.h>
 
 #define INMENU 2001
 #define INLOBBIE 2002
@@ -23,7 +24,6 @@
 #define SURPRISE '?'
 
 #define MAXTIMESPAN 30
-
 #define OBSERVE 10
 
 int state = INMENU;
@@ -49,17 +49,25 @@ int number_of_players = 0;
 
 char** map;
 int map_n, map_m;
-int blow_radius;
 struct player_t* game_players = NULL;
 int number_of_game_players = 0;
 int our_number;
+int ghost;
+int have_winner;
+time_t last_shot;
+int moratory;
 
-WINDOW *game_window, *players_window;
+WINDOW *game_window, *players_window, *time_window;
 
 
 int min(int a, int b)
 {
     return a < b ? a : b;
+}
+
+int max(int a, int b)
+{
+    return a < b ? b : a;
 }
 
 int open_connection(char* address, u_int16_t user_port)
@@ -269,7 +277,7 @@ void receive_map_and_players(int socket)
     int max_health, i;
     read(socket, &our_number, sizeof(int));
     read(socket, &max_health, sizeof(int));
-    read(socket, &blow_radius, sizeof(int));
+    read(socket, &moratory, sizeof(int));
     read(socket, &map_n, sizeof(int));
     read(socket, &map_m, sizeof(int));
     map = (char**)malloc(map_n * sizeof(char*));
@@ -304,15 +312,16 @@ void init_screen_game()
    int max_player_name, i, S, W, H;
    max_player_name = 0;
    for (i = 0; i < number_of_game_players; i++)
-       if (strlen(game_players[i].name) > max_player_name)
-           max_player_name = strlen(game_players[i].name);
+       max_player_name = max(max_player_name, strlen(game_players[i].name));
    S = 2 * OBSERVE + 3;
    W = max_player_name + 9;
    H = number_of_game_players + 2;
    game_window = newwin(S, S, (LINES - S) / 2, (COLS - S - W) / 2);
    players_window = newwin(H, W, (LINES - H) / 2, (COLS - S - W) / 2 + S);
+   time_window = newwin(3, 5, (LINES - H) / 2 + H, (COLS - S - W) / 2 + S);
    box(game_window, 0, 0);
    box(players_window, 0, 0);
+   box(time_window, 0, 0);
    print_message_center(stdscr, (LINES - S) / 2 - 4, "Use arrow keys to move");
    print_message_center(stdscr, (LINES - S) / 2 - 3, "Space to blow up");
    print_message_center(stdscr, (LINES - S) / 2 - 2, "ESC to exit");
@@ -358,6 +367,20 @@ void sync_map_with_screen()
     wrefresh(players_window);
 }
 
+int passed_time()
+{
+    return difftime(time(NULL), last_shot);
+}
+
+void print_time()
+{
+   int passed = passed_time();
+   int output = max(0, moratory - passed);
+   mvwprintw(time_window, 1, 1, "   ");
+   mvwprintw(time_window, 1, 1, "%d", output);
+   wrefresh(time_window);
+}
+
 void print_winner(int number)
 {
     char buf[100];
@@ -365,11 +388,6 @@ void print_winner(int number)
     sprintf(buf, "%s wins the round", game_players[number].name);
     print_message_center(stdscr, LINES / 2, buf);
     print_message_center(stdscr, LINES / 2 + 2, "Press ESC to return to menu");
-}
-
-void print_bomb(int number)
-{
-    return;
 }
 
 void* receiving_server_info(void* arg)
@@ -380,7 +398,7 @@ void* receiving_server_info(void* arg)
     server.events = POLLIN;
     while (state == INGAME)
     {
-        if (poll(&server, 1, MAXTIMESPAN))
+        if (poll(&server, 1, -1))
         {
             char action;
             read(socket, &action, sizeof(char));
@@ -388,13 +406,9 @@ void* receiving_server_info(void* arg)
             {
                 int number;
                 read(socket, &number, sizeof(int));
+                ghost = 0;
+                have_winner = 1;
                 print_winner(number);
-            }
-            else if (action == 'B')
-            {
-                int number;
-                read(socket, &number, sizeof(int));
-                print_bomb(number);
             }
             else if (action >= '1' && action <= '8')
             {
@@ -410,6 +424,16 @@ void* receiving_server_info(void* arg)
                 game_players[number].y = y;
                 game_players[number].health = health;
                 map[y][x] = action;
+                if (health == 0)
+                {
+                    map[y][x] = EMPTY;
+                    if (number == our_number)
+                    {
+                        print_message_center(stdscr, LINES / 2 + OBSERVE + 5, 
+                                             "You dead, sorry");
+                        ghost = 1;
+                    }
+                }
                 sync_map_with_screen();
             }
             else if (action == 'Q')
@@ -423,7 +447,9 @@ void free_map_and_players()
 {
     int i;
     for (i = 0; i < map_n; i++)
+    {
         free(map[i]);
+    }
     free(map);
     for (i = 0; i < number_of_game_players; i++)
         free(game_players[i].name);
@@ -438,29 +464,50 @@ void game_start(int socket, char* name)
     receive_map_and_players(socket);
     get_command_from_server(socket);
     init_screen_game();
+    halfdelay(1);
+    ghost = 0;
+    have_winner = 0;
     sync_map_with_screen();
+    last_shot = time(NULL);
     pthread_create(&thread, NULL, receiving_server_info, &socket);
     do
     {
+        if (!ghost && !have_winner)
+            print_time(); 
         ch = getch();
+        if (ch != ERR)
         switch(ch)
         {
             case KEY_UP:
                 write(socket, "U", sizeof(char));
+                if (ghost)
+                    game_players[our_number].y--;
                 break;
             case KEY_DOWN:
                 write(socket, "D", sizeof(char));
+                if (ghost)
+                    game_players[our_number].y++;
                 break;
             case KEY_LEFT:
                 write(socket, "L", sizeof(char));
+                if (ghost)
+                    game_players[our_number].x--;
                 break;
             case KEY_RIGHT:
                 write(socket, "R", sizeof(char));
+                if (ghost)
+                    game_players[our_number].x++;
                 break;
             case ' ':
-                write(socket, "B", sizeof(char));
+                if (passed_time() >= moratory)
+                {
+                    write(socket, "B", sizeof(char));
+                    last_shot = time(NULL);
+                }
                 break;
         }
+        if (ghost)
+            sync_map_with_screen();
     } while (ch != 27);
     write(socket, "Q", sizeof(char));
     pthread_join(thread, NULL);
@@ -625,6 +672,7 @@ void init_curses()
     noecho();
     cbreak();
     keypad(stdscr, true);
+    curs_set(0);
 }
 
 int main(int argc, char** argv)
